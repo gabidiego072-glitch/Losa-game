@@ -1,6 +1,6 @@
 # Plaza Llanera — shooter en Xirivella
 
-Shooter en primera persona hecho con Three.js que recrea la **Plaza Marqués Llanera** (Xirivella, Valencia):
+Shooter en primera persona hecho con Three.js que recrea la **Plaza Marqués Llanera** (Xirivella, Valencia) con las medidas reales sacadas de OpenStreetMap y de la ortofoto del IGN:
 la pista de fútbol sala "La Losa" (con valla solo en el lado de Carrer les Oliveres y canastas), el parque de pinos
 con la zona infantil y la mesa de ping-pong, la explanada de cemento y la fachada con sus dos bares (Bar Restaurante Las Morenas y Bar Hermanas Penella),
 los coches aparcados y las naves industriales de **Carrer les Oliveres**, **Carrer les Moreres** y **Carrer els Garrofers**.
@@ -43,6 +43,9 @@ los edificios como cobertura. Los enemigos dejan botiquines y munición al caer.
 | 5 | Francotirador | Mira telescópica (clic derecho), mata de un tiro a la cabeza |
 
 ## Recursos usados (todos libres)
+
+- Trazado real de calles, edificio de 6 plantas, pista, parque y bares: datos © colaboradores de [OpenStreetMap](https://www.openstreetmap.org/copyright) (ODbL).
+- Ortofoto aérea (tejados reales, minimapa y medidas): PNOA cedido por © [Instituto Geográfico Nacional](https://www.ign.es) (CC BY 4.0).
 
 - Cielo HDRI y texturas PBR (asfalto, hormigón, tierra, corteza, enlucido, caucho): [Poly Haven](https://polyhaven.com), licencia CC0.
 - Soldado animado: modelo `Soldier.glb` de los ejemplos de [three.js](https://github.com/mrdoob/three.js).

@@ -123,6 +123,7 @@
     <div class="qrow"><label for="quality">Calidad gráfica</label><select id="quality"><option value="auto">Automática (recomendada)</option><option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option></select></div>
     <button id="playBtn" disabled>CARGANDO…</button>
     <div id="loading">Cargando texturas y modelos reales…</div>
+    <div style="margin-top:10px;font-size:12px;color:var(--muted)">Trazado real: datos © colaboradores de OpenStreetMap · Ortofoto PNOA cedida por © Instituto Geográfico Nacional · Texturas y cielo: Poly Haven (CC0)</div>
   </div>
 </div>
 <div class="ov hidden" id="pauseOv"><div class="card"><h1>PAUSA</h1><h2>Haz clic para continuar</h2><button id="resumeBtn">CONTINUAR</button></div></div>
@@ -193,11 +194,14 @@ async function loadBinary(loader, url) {
     return await loader.loadAsync('data:application/octet-stream;base64,' + (await r.text()).trim());
   }
 }
-const [PB_asphalt, PB_concrete, PB_dirt, PB_bark, PB_plaster, PB_rubber, HDR, GLB] = await Promise.all([
+const [PB_asphalt, PB_concrete, PB_dirt, PB_bark, PB_plaster, PB_rubber, HDR, GLB, ORTHO] = await Promise.all([
   loadPBR('asphalt'), loadPBR('concrete'), loadPBR('dirt'), loadPBR('bark'), loadPBR('plaster'), loadPBR('rubber'),
   loadBinary(new RGBELoader(manager).setDataType(THREE.HalfFloatType), 'assets/sky.hdr').catch(() => null),
   loadBinary(new GLTFLoader(manager), 'assets/soldier.glb').catch(() => null),
+  // IGN PNOA orthophoto of the area (CC BY 4.0), already rotated to the game axes, covering x,z in [-130, 130]
+  texLoader.loadAsync('assets/ortho.jpg').catch(() => null),
 ]);
+if (ORTHO) { ORTHO.colorSpace = THREE.SRGBColorSpace; ORTHO.anisotropy = MAXANISO; }
 
 // sky + image based lighting from the HDRI; the sun light is aimed at the sun found in the image
 let SUN_DIR = new THREE.Vector3(-0.45, 0.62, 0.64).normalize();
@@ -309,20 +313,23 @@ T.concrete = makeTex(256, 256, (g, w, h) => {
   blotches(g, w, h, 8, 'rgba(60,60,55,0.12)', 20, 60);
   g.strokeStyle = 'rgba(70,70,65,.35)'; g.lineWidth = 1.5; g.strokeRect(0, 0, w, h);
 });
-T.court = makeTex(520, 1080, (g, w, h) => {
+T.court = makeTex(460, 950, (g, w, h) => {   // 20 px per metre, pitch 23 x 47.5 m
   g.fillStyle = '#b3b0a7'; g.fillRect(0, 0, w, h);
-  speckle(g, w, h, 30000, ['#a8a59c', '#bcb9b0', '#9d9a92'], 1, 2.5);
+  speckle(g, w, h, 26000, ['#a8a59c', '#bcb9b0', '#9d9a92'], 1, 2.5);
   blotches(g, w, h, 30, 'rgba(70,65,55,0.12)', 30, 90);
   g.strokeStyle = 'rgba(70,70,65,.3)'; g.lineWidth = 1.5;
   for (let y = 0; y < h; y += 100) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+  // field 20 x 45.5 m, 1 m from the court edge at the ends, shifted towards Oliveres like in the photo
+  const fx0 = 10, fx1 = 410, fy0 = 20, fy1 = 930, cx = (fx0 + fx1) / 2, cy = (fy0 + fy1) / 2;
   g.strokeStyle = '#f4f4ee'; g.lineWidth = 3.5;
-  g.strokeRect(60, 140, 400, 800);
-  g.beginPath(); g.moveTo(60, 540); g.lineTo(460, 540); g.stroke();
-  g.beginPath(); g.arc(260, 540, 60, 0, Math.PI * 2); g.stroke();
-  g.fillStyle = '#f4f4ee'; g.beginPath(); g.arc(260, 540, 4, 0, 7); g.fill();
-  g.beginPath(); g.arc(230, 140, 120, Math.PI, Math.PI / 2, true); g.lineTo(290, 260); g.arc(290, 140, 120, Math.PI / 2, 0, true); g.stroke();
-  g.beginPath(); g.arc(230, 940, 120, Math.PI, Math.PI * 1.5, false); g.lineTo(290, 820); g.arc(290, 940, 120, Math.PI * 1.5, Math.PI * 2, false); g.stroke();
-  for (const y of [260, 340, 820, 740]) { g.beginPath(); g.arc(260, y, 4, 0, 7); g.fill(); }
+  g.strokeRect(fx0, fy0, fx1 - fx0, fy1 - fy0);
+  g.beginPath(); g.moveTo(fx0, cy); g.lineTo(fx1, cy); g.stroke();
+  g.beginPath(); g.arc(cx, cy, 60, 0, Math.PI * 2); g.stroke();
+  g.fillStyle = '#f4f4ee'; g.beginPath(); g.arc(cx, cy, 4, 0, 7); g.fill();
+  // wide D-shaped areas (≈9 m radius) as seen in the orthophoto
+  g.beginPath(); g.arc(cx, fy0, 180, 0, Math.PI); g.stroke();
+  g.beginPath(); g.arc(cx, fy1, 180, Math.PI, Math.PI * 2); g.stroke();
+  for (const y of [fy0 + 120, fy1 - 120]) { g.beginPath(); g.arc(cx, y, 4, 0, 7); g.fill(); }
 });
 T.chain = (() => {
   const c = document.createElement('canvas'); c.width = 64; c.height = 64; const g = c.getContext('2d');
@@ -508,9 +515,51 @@ const M = {
   invisible: new THREE.MeshBasicMaterial({ visible: false }),
 };
 
+// flat roof textured with the real aerial photo (world-space UVs)
+const orthoMat = ORTHO ? new THREE.MeshStandardMaterial({ map: ORTHO, roughness: 0.85, metalness: 0.05, envMapIntensity: 0.4, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }) : null;
+function orthoRoof(x0, z0, x1, z1, y) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute([x0, y, z0, x1, y, z0, x0, y, z1, x1, y, z1], 3));
+  const U = (x) => (x + 130) / 260, V = (z) => 1 - (z + 130) / 260;
+  g.setAttribute('uv', new THREE.Float32BufferAttribute([U(x0), V(z0), U(x1), V(z0), U(x0), V(z1), U(x1), V(z1)], 2));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute([0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0], 3));
+  g.setIndex([0, 2, 1, 2, 3, 1]);
+  const m = new THREE.Mesh(g, orthoMat || M.roof); m.receiveShadow = true; scene.add(m);
+}
+// industrial walls: concrete-block base, ribbed sheet metal, roller doors, office windows and painted signs
+const SIGNS = ['TALLER MECÀNIC', 'ALUMINIS I PVC', 'TRANSPORTS', 'FUSTERIA', 'RECANVIS', 'MAGATZEM', 'ELECTRICITAT', 'METAL·LÚRGICA', 'PINTURES', 'CLIMATITZACIÓ'];
+function wallTex(sheet, base) {
+  return makeTex(768, 256, (g, w, h) => {      // 24 m wide, stretched to the wall height
+    g.fillStyle = sheet; g.fillRect(0, 0, w, h);
+    for (let x = 0; x < w; x += 6) { g.fillStyle = 'rgba(0,0,0,.10)'; g.fillRect(x, 0, 2, h * 0.62); g.fillStyle = 'rgba(255,255,255,.10)'; g.fillRect(x + 3, 0, 1, h * 0.62); }
+    g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(0, 0, w, 10);
+    g.fillStyle = base; g.fillRect(0, h * 0.62, w, h * 0.38);
+    g.strokeStyle = 'rgba(0,0,0,.18)'; g.lineWidth = 1;
+    for (let y = h * 0.62; y < h; y += 8) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); const o = ((y / 8) | 0) % 2 ? 0 : 16; for (let x = o; x < w; x += 32) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 8); g.stroke(); } }
+    // two roller doors and a pedestrian door per 24 m
+    for (const dx of [70, 450]) {
+      const dw = 150, dh = h * 0.6, dy = h - dh;
+      g.fillStyle = '#e9e7e2'; g.fillRect(dx - 6, dy - 8, dw + 12, dh + 8);
+      const gr = g.createLinearGradient(0, dy, 0, h); gr.addColorStop(0, '#b9bec2'); gr.addColorStop(1, '#8d9398'); g.fillStyle = gr; g.fillRect(dx, dy, dw, dh);
+      g.strokeStyle = 'rgba(30,30,30,.35)'; for (let y = dy + 3; y < h; y += 5) { g.beginPath(); g.moveTo(dx, y); g.lineTo(dx + dw, y); g.stroke(); }
+    }
+    g.fillStyle = '#3f4448'; g.fillRect(300, h - 70, 34, 70); g.fillStyle = 'rgba(150,180,200,.5)'; g.fillRect(305, h - 64, 24, 24);
+    // office windows
+    for (const wx of [250, 352, 640, 700]) { g.fillStyle = '#2b3439'; g.fillRect(wx, h * 0.66, 40, 26); g.fillStyle = 'rgba(180,210,230,.35)'; g.fillRect(wx + 3, h * 0.66 + 3, 16, 20); }
+    // painted sign
+    if (rnd() < 0.85) {
+      const t = SIGNS[(rnd() * SIGNS.length) | 0], col = ['#1f4e8c', '#a3241c', '#2f6b3a', '#333', '#c47a10'][(rnd() * 5) | 0];
+      g.fillStyle = '#f6f4ef'; g.fillRect(230, 26, 300, 46); g.fillStyle = col; g.fillRect(230, 26, 300, 8);
+      g.fillStyle = col; let fs = 30; g.font = `bold ${fs}px sans-serif`; while (g.measureText(t).width > 280) { fs--; g.font = `bold ${fs}px sans-serif`; }
+      g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(t, 380, 54); g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+    }
+    blotches(g, w, h, 8, 'rgba(70,60,50,0.10)', 20, 70);
+    g.fillStyle = 'rgba(60,50,40,.12)'; for (let i = 0; i < 10; i++) g.fillRect(rnd() * w, h * 0.62, 2, 20 + rnd() * 40);
+  });
+}
+T.wall = [wallTex('#d9d9d4', '#a3a19a'), wallTex('#b9c3c9', '#9b9a94'), wallTex('#d8cdb6', '#a9a39a'), wallTex('#c9cccd', '#8f8e88')];
 // storefront + awning + terrace for a bar on the north facade (facade plane at z = -46)
-function barFront(xc, line1, line2, signCol, awnCol, tables) {
-  const W = 10, FZ = -46;
+function barFront(xc, line1, line2, signCol, awnCol, tables, FZ = -46, W = 10) {
   const tex = makeTex(1024, 368, (g, w, h) => {
     g.fillStyle = '#d9cbb4'; g.fillRect(0, 0, w, h);
     speckle(g, w, h, 3000, ['rgba(0,0,0,.05)', 'rgba(255,255,255,.07)'], 1, 3);
@@ -571,9 +620,22 @@ function barFront(xc, line1, line2, signCol, awnCol, tables) {
 }
 
 // ============================================================ LEVEL
-// Axes: x east, z south. Carrer les Oliveres runs along z at x≈-48, Carrer les Moreres at x≈32,
-// Carrer els Garrofers along x at z≈35. Plaza (court + park) sits between them.
+// Real layout, measured from OpenStreetMap and the IGN PNOA orthophoto (1 unit = 1 m).
+// The map is rotated so the streets run along the axes:
+//   Carrer les Oliveres  x = -29  (west)      Carrer de les Moreres  x = 54.3 (east)
+//   Carrer els Garrofers z = 41.5 (south)     6-storey block with the bars: z -43.3 … -32.9 (north)
+const REAL = {
+  oliveres: -29, moreres: 54.3, garrofers: 41.5,
+  block: { x0: -21, x1: 45.5, z0: -32.9, z1: 31 },
+  pitch: { x0: -20.5, x1: 2.5, z0: -18, z1: 29.5 },
+  park: { x0: 5.1, x1: 29.5, z0: -4.4, z1: 28.5 },
+  esplanade: { x0: 4, x1: 29, z0: -18, z1: -6 },
+  playground: { x0: 5.5, x1: 12.5, z0: -4, z1: 12.5 },
+  pingpong: { x0: 15.5, x1: 21.5, z0: 3, z1: 13, table: [18.7, 8.35] },
+  building: { x0: -23.4, x1: 39.6, z0: -43.3, z1: -32.9, levels: 6 },
+};
 {
+  const RL = REAL;
   // base asphalt
   flat(T.asphalt, -160, -160, 160, 160, 0, 4, PB_asphalt ? { pb: PB_asphalt, pbTile: 3.5 } : {});
   // road paint helpers
@@ -583,14 +645,19 @@ function barFront(xc, line1, line2, signCol, awnCol, tables) {
     m.position.set((x0 + x1) / 2, 0.01, (z0 + z1) / 2); m.rotation.y = Math.atan2(dx, dz); m.receiveShadow = true; scene.add(m);
   };
   const dashed = (x0, z0, x1, z1) => { const L = Math.hypot(x1 - x0, z1 - z0), n = Math.floor(L / 6); for (let i = 0; i < n; i++) { const a = i / n, b = (i + 0.5) / n; line(x0 + (x1 - x0) * a, z0 + (z1 - z0) * a, x0 + (x1 - x0) * b, z0 + (z1 - z0) * b); } };
-  dashed(-48.5, -150, -48.5, 30); dashed(32.5, -150, 32.5, 30); dashed(-150, 35.5, 150, 35.5);
-  // parking stall lines
-  for (let z = -52; z <= 28; z += 2.6) { line(-45, z, -40, z, 0.1); line(24, z, 29, z, 0.1); }
-  for (let x = -40; x <= 24; x += 2.6) line(x, 28, x, 32, 0.1);
-  // zebra crossings
-  for (let i = 0; i < 8; i++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 4).rotateX(-Math.PI / 2), M.paint); m.position.set(26 + i * 1.0 - 0.0, 0.012, 35.5); m.receiveShadow = true; scene.add(m); }
-  for (let i = 0; i < 7; i++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(6.5, 0.5).rotateX(-Math.PI / 2), M.paint); m.position.set(32.5, 0.012, 24 + i); m.receiveShadow = true; scene.add(m); }
-  for (let i = 0; i < 7; i++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(6.5, 0.5).rotateX(-Math.PI / 2), M.paint); m.position.set(-48.5, 0.012, 24 + i); m.receiveShadow = true; scene.add(m); }
+  const zebra = (cx, cz, alongX, n, len) => { for (let i = 0; i < n; i++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(alongX ? 0.5 : len, alongX ? len : 0.5).rotateX(-Math.PI / 2), M.paint); m.position.set(cx + (alongX ? (i - n / 2) * 1.0 : 0), 0.012, cz + (alongX ? 0 : (i - n / 2) * 1.0)); m.receiveShadow = true; scene.add(m); } };
+  dashed(RL.oliveres, -150, RL.oliveres, 34); dashed(RL.oliveres, 49, RL.oliveres, 150);
+  dashed(RL.moreres, -150, RL.moreres, 34); dashed(RL.moreres, 49, RL.moreres, 150);
+  dashed(-150, RL.garrofers, -34, RL.garrofers); dashed(-24, RL.garrofers, 49, RL.garrofers); dashed(60, RL.garrofers, 150, RL.garrofers);
+  // edge lines of the road
+  line(-25.2, -150, -25.2, 34, 0.1); line(-32.8, -150, -32.8, 34, 0.1); line(50, -150, 50, 34, 0.1); line(58.5, -150, 58.5, 34, 0.1);
+  // parking stalls: angled on Oliveres, perpendicular on Moreres and Garrofers
+  for (let z = -17; z <= 28; z += 3.3) line(-25.2, z, -21, z - 3.0, 0.1);
+  for (let z = -21; z <= 27; z += 2.6) line(45.5, z, 50, z, 0.1);
+  for (let x = -18; x <= 44; x += 2.6) line(x, 31, x, 35.5, 0.1);
+  // zebra crossings (from the orthophoto)
+  zebra(RL.oliveres, 32.8, false, 7, 7); zebra(RL.moreres, 32.8, false, 7, 8); zebra(RL.moreres, -26, false, 6, 8);
+  zebra(-35.5, RL.garrofers, true, 6, 11); zebra(RL.oliveres, 50.5, false, 5, 7); zebra(RL.moreres, 50.5, false, 5, 8);
 
   // raised slabs (sidewalks / plaza) with curbs
   const slab = (tex, x0, z0, x1, z1, h, tile) => {
@@ -603,17 +670,28 @@ function barFront(xc, line1, line2, signCol, awnCol, tables) {
     addMesh(m, { cast: false });
     addCol(x0, x1, z0, z1, 0, h, { sight: false, nav: false });
   };
-  // plaza block
-  slab(T.tiles, -40, -46, 24, 27.6, 0.15, 3);
+  // the plaza block (red and beige tiles), the strip north of the angled parking and the pedestrian street
+  slab(T.tiles, RL.block.x0, RL.block.z0, RL.block.x1, RL.block.z1, 0.15, 3);
+  slab(T.tiles, -25.2, -32.9, RL.block.x0, -18.5, 0.15, 3);
+  slab(T.tiles, -25.2, -56, RL.building.x0, -32.9, 0.15, 3);
+  slab(T.tiles, RL.building.x1, -56, 50, -32.9, 0.15, 3);
+  slab(T.tiles, RL.building.x0, -50, RL.building.x1, RL.building.z0, 0.15, 3);
   // sidewalks
-  slab(T.concrete, -57, -160, -52, 160, 0.15, 2);       // Oliveres west
-  slab(T.concrete, 36, -160, 40, 31, 0.15, 2);          // Moreres east
-  slab(T.concrete, -160, 39, 160, 43, 0.15, 2);         // Garrofers south
+  slab(T.concrete, -37, -160, -32.8, 160, 0.15, 2);      // Oliveres west
+  slab(T.concrete, 58.5, -160, 62, 160, 0.15, 2);        // Moreres east
+  slab(T.concrete, -160, 47.5, -32.8, 50.5, 0.15, 2);    // Garrofers south (three pieces between the crossing streets)
+  slab(T.concrete, -25.2, 47.5, 50, 50.5, 0.15, 2);
+  slab(T.concrete, 58.5, 47.5, 160, 50.5, 0.15, 2);
+  slab(T.concrete, -160, 31, -32.8, 35.5, 0.15, 2);      // Garrofers north, west of Oliveres
+  slab(T.concrete, 58.5, 31, 160, 35.5, 0.15, 2);
+  // dirt strip between the Oliveres sidewalk and the warehouses
+  flat(T.dirt, -40.5, -160, -37, 160, 0.02, 4, PB_dirt ? { layer: 1, pb: PB_dirt, pbTile: 3, color: 0xe2cfaa } : { layer: 1 });
 
-  // futsal court
-  { const cm = flat(T.court, -37, -27, -13, 23, 0.17, 0, { layer: 2, rough: 0.9 }).material; cm.map.repeat.set(1, 1);
-    if (PB_concrete) { cm.normalMap = rep(PB_concrete.normalMap, 8, 16.7); cm.roughness = 0.95; cm.envMapIntensity = 0.45; cm.needsUpdate = true; } }
-  // fence around court with gaps (doors)
+  // futsal court (lines as seen from above: wide D areas at both ends, centre line and circle)
+  const P = RL.pitch;
+  { const cm = flat(T.court, P.x0, P.z0, P.x1, P.z1, 0.17, 0, { layer: 2, rough: 0.9 }).material; cm.map.repeat.set(1, 1);
+    if (PB_concrete) { cm.normalMap = rep(PB_concrete.normalMap, 7.7, 15.8); cm.roughness = 0.95; cm.envMapIntensity = 0.45; cm.needsUpdate = true; } }
+  // tall fence only along Carrer les Oliveres
   const fenceMat = new THREE.MeshStandardMaterial({ map: T.chain, alphaMap: T.chain, transparent: false, alphaTest: 0.35, side: THREE.DoubleSide, color: 0xbfc5c3, metalness: 0.5, roughness: 0.5 });
   const FH = 4.6;
   const fenceRun = (x0, z0, x1, z1) => {
@@ -637,19 +715,18 @@ function barFront(xc, line1, line2, signCol, awnCol, tables) {
     const t = 0.08;
     addCol(Math.min(x0, x1) - t, Math.max(x0, x1) + t, Math.min(z0, z1) - t, Math.max(z0, z1) + t, 0, FH + 0.2, { sight: false, nav: true });
   };
-  const cx0 = -37, cx1 = -13, cz0 = -27, cz1 = 23;
-  // only the long side facing Carrer les Oliveres has a tall fence; the rest of the court is open
-  fenceRun(cx0, cz0, cx0, cz1);
+  fenceRun(P.x0 - 0.2, P.z0, P.x0 - 0.2, P.z1);
   // low green railing between the court and the park, with gaps to walk through
-  for (const [z0, z1] of [[-26, -15], [-12, 0], [3, 13], [16, 23]]) {
+  const RX = P.x1 + 0.6;
+  for (const [z0, z1] of [[-17, -8], [-5, 5], [8, 18], [21, 29]]) {
     const L = z1 - z0, zc = (z0 + z1) / 2;
-    const top = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, L), M.green); top.position.set(-12, 1.05, zc); top.castShadow = true; scene.add(top);
-    const mid = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, L), M.green); mid.position.set(-12, 0.6, zc); scene.add(mid);
-    for (let z = z0; z <= z1 + 0.01; z += 1.5) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.9, 0.05), M.green); p.position.set(-12, 0.6, Math.min(z, z1)); p.castShadow = true; scene.add(p); }
-    addCol(-12.08, -11.92, z0, z1, 0, 1.1, { sight: false, nav: true });
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, L), M.green); top.position.set(RX, 1.05, zc); top.castShadow = true; scene.add(top);
+    const mid = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, L), M.green); mid.position.set(RX, 0.6, zc); scene.add(mid);
+    for (let z = z0; z <= z1 + 0.01; z += 1.5) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.9, 0.05), M.green); p.position.set(RX, 0.6, Math.min(z, z1)); p.castShadow = true; scene.add(p); }
+    addCol(RX - 0.08, RX + 0.08, z0, z1, 0, 1.1, { sight: false, nav: true });
   }
-
-  // futsal goals
+  // futsal goals at both ends of the field
+  const FCX = (P.x0 + P.x1) / 2 - 1.5;
   const goal = (z, dir) => {
     const g = new THREE.Group(); const pm = M.white;
     const p1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2, 8), pm); p1.position.set(-1.5, 1, 0);
@@ -657,69 +734,72 @@ function barFront(xc, line1, line2, signCol, awnCol, tables) {
     const cb = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3.1, 8), pm); cb.rotation.z = Math.PI / 2; cb.position.y = 2;
     const nt = T.chain.clone(); nt.repeat.set(30, 20); nt.needsUpdate = true;
     const nm = new THREE.MeshStandardMaterial({ map: nt, alphaMap: nt, alphaTest: 0.35, side: THREE.DoubleSide, color: 0xffffff });
-    const back = new THREE.Mesh(new THREE.PlaneGeometry(3, 2), nm); back.position.set(0, 1, -1 * 1.0);
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(3, 2), nm); back.position.set(0, 1, -1);
     const top = new THREE.Mesh(new THREE.PlaneGeometry(3, 1), nm); top.rotation.x = Math.PI / 2; top.position.set(0, 2, -0.5);
     const s1 = new THREE.Mesh(new THREE.PlaneGeometry(1, 2), nm); s1.rotation.y = Math.PI / 2; s1.position.set(-1.5, 1, -0.5);
     const s2 = s1.clone(); s2.position.x = 1.5;
     g.add(p1, p2, cb, back, top, s1, s2); g.traverse(o => { if (o.isMesh) o.castShadow = true; });
-    g.position.set(-25, 0.17, z); g.rotation.y = dir; scene.add(g);
+    g.position.set(FCX, 0.17, z); g.rotation.y = dir; scene.add(g);
     const zz = z - Math.cos(dir) * 0.5;
-    addCol(-26.6, -23.4, zz - 0.55, zz + 0.55, 0, 2.1, { sight: false, nav: true });
+    addCol(FCX - 1.6, FCX + 1.6, zz - 0.55, zz + 0.55, 0, 2.1, { sight: false, nav: true });
   };
-  goal(-22, 0); goal(18, Math.PI);
-  // basketball hoops on the west long side (as in the street view)
+  goal(P.z0 + 0.8, 0); goal(P.z1 - 0.8, Math.PI);
+  // basketball hoops on the Oliveres side (as in the street view)
   const hoop = (z) => {
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.4, 8), M.metal); pole.position.set(-36.2, 0.17 + 1.7, z);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 0.08), M.metal); arm.position.set(-35.6, 3.35, z);
-    const board = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.05, 1.8), M.white); board.position.set(-35.0, 3.5, z);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.015, 6, 20), std({ color: 0xd2541f })); ring.rotation.x = Math.PI / 2; ring.position.set(-34.7, 3.15, z);
+    const hx = P.x0 + 0.5;
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.4, 8), M.metal); pole.position.set(hx, 0.17 + 1.7, z);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.08, 0.08), M.metal); arm.position.set(hx + 0.6, 3.35, z);
+    const board = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.05, 1.8), M.white); board.position.set(hx + 1.2, 3.5, z);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.015, 6, 20), std({ color: 0xd2541f })); ring.rotation.x = Math.PI / 2; ring.position.set(hx + 1.5, 3.15, z);
     for (const o of [pole, arm, board, ring]) { o.castShadow = true; scene.add(o); }
     shootables.push(board);
-    addCol(-36.35, -36.05, z - 0.15, z + 0.15, 0, 3.5);
+    addCol(hx - 0.15, hx + 0.15, z - 0.15, z + 0.15, 0, 3.5);
   };
-  hoop(-12); hoop(8);
+  hoop(0); hoop(12);
 
-  // park: dirt ground, playground, ping-pong
-  flat(T.dirt, -9, -16, 19, 21, 0.17, 4, PB_dirt ? { layer: 2, pb: PB_dirt, pbTile: 3, color: 0xf2dcb8 } : { layer: 2 });
-  // cement esplanade between the park and the bar building
-  flat(T.concrete, -9, -38.5, 24, -16.5, 0.17, 4, PB_concrete ? { layer: 2, pb: PB_concrete, pbTile: 3, color: new THREE.Color().setRGB(1.45, 1.42, 1.36) } : { layer: 2 });
-  { const rm = flat(T.rubber, -8, -12, -1.5, 6, 0.19, 2, { layer: 3, rough: 0.8 }).material; if (PB_rubber) { rm.normalMap = rep(PB_rubber.normalMap, 3, 9); rm.needsUpdate = true; } }
-  flat(T.concrete, 2.5, -13, 9.5, -5, 0.19, 3, PB_concrete ? { layer: 3, pb: PB_concrete, pbTile: 2.5, color: 0xdddddd } : { layer: 3 });
-  // low border around dirt
-  for (const [x0, z0, x1, z1] of [[-9.1, -16.1, 19.1, -15.9], [-9.1, 20.9, 19.1, 21.1], [-9.1, -16, -8.9, 21], [18.9, -16, 19.1, 21]]) {
+  // park: dirt, cement esplanade, playground, ping-pong pad
+  const PK = RL.park, ES = RL.esplanade, PG = RL.playground, PP = RL.pingpong;
+  flat(T.dirt, PK.x0, PK.z0, PK.x1, PK.z1, 0.17, 4, PB_dirt ? { layer: 2, pb: PB_dirt, pbTile: 3, color: 0xf2dcb8 } : { layer: 2 });
+  flat(T.concrete, ES.x0, ES.z0, ES.x1, ES.z1, 0.17, 4, PB_concrete ? { layer: 2, pb: PB_concrete, pbTile: 3, color: new THREE.Color().setRGB(2.1, 2.05, 1.95) } : { layer: 2 });
+  { const rm = flat(T.rubber, PG.x0, PG.z0, PG.x1, PG.z1, 0.19, 2, { layer: 3, rough: 0.8 }).material; if (PB_rubber) { rm.normalMap = rep(PB_rubber.normalMap, 3.5, 8); rm.needsUpdate = true; } }
+  flat(T.concrete, PP.x0, PP.z0, PP.x1, PP.z1, 0.19, 3, PB_concrete ? { layer: 3, pb: PB_concrete, pbTile: 2.5, color: new THREE.Color().setRGB(2.0, 1.97, 1.9) } : { layer: 3 });
+  for (const [x0, z0, x1, z1] of [[PK.x0 - 0.1, PK.z0 - 0.1, PK.x1 + 0.1, PK.z0 + 0.1], [PK.x0 - 0.1, PK.z1 - 0.1, PK.x1 + 0.1, PK.z1 + 0.1], [PK.x0 - 0.1, PK.z0, PK.x0 + 0.1, PK.z1], [PK.x1 - 0.1, PK.z0, PK.x1 + 0.1, PK.z1]]) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.12, z1 - z0), M.curb); m.position.set((x0 + x1) / 2, 0.21, (z0 + z1) / 2); m.receiveShadow = true; scene.add(m);
   }
-  // ping-pong table (concrete base, blue top)
-  box(0.5, 0.68, 2.2, M.concrete, 6, 0.19, -9, { sight: false });
-  const tt = box(1.525, 0.08, 2.74, M.blueTable, 6, 0.85, -9, { col: false });
-  addCol(5.24, 6.76, -10.37, -7.63, 0, 0.95, { sight: false, nav: true });
-  { const net = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.16, 0.03), M.dark); net.position.set(6, 1.01, -9); net.castShadow = true; scene.add(net);
-    const line = new THREE.Mesh(new THREE.PlaneGeometry(0.03, 2.74).rotateX(-Math.PI / 2), M.white); line.position.set(6, 0.935, -9); scene.add(line); }
-  // playground: slide + swings + spring rider
+  // ping-pong table (OpenStreetMap position, long side along z)
+  const [tx, tz] = PP.table;
+  box(0.5, 0.68, 2.2, M.concrete, tx, 0.19, tz, { sight: false });
+  box(1.525, 0.08, 2.74, M.blueTable, tx, 0.85, tz, { col: false });
+  addCol(tx - 0.76, tx + 0.76, tz - 1.37, tz + 1.37, 0, 0.95, { sight: false, nav: true });
+  { const net = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.16, 0.03), M.dark); net.position.set(tx, 1.01, tz); net.castShadow = true; scene.add(net);
+    const ln = new THREE.Mesh(new THREE.PlaneGeometry(0.03, 2.74).rotateX(-Math.PI / 2), M.white); ln.position.set(tx, 0.935, tz); scene.add(ln); }
+  // playground: tower + slide, swings, spring riders
   {
     const blue = std({ color: 0x2a6fd1, roughness: 0.5 }), red = std({ color: 0xc8392c, roughness: 0.5 }), yel = std({ color: 0xe9b42a, roughness: 0.5 });
-    box(1.6, 1.5, 1.6, red, -4.5, 0.19, -8, { sight: true });
+    const cx = (PG.x0 + PG.x1) / 2;
+    box(1.6, 1.5, 1.6, red, cx, 0.19, -0.5, { sight: true });
     for (const [dx, dz] of [[-0.75, -0.75], [0.75, -0.75], [-0.75, 0.75], [0.75, 0.75]]) {
-      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.8, 8), yel); p.position.set(-4.5 + dx, 0.19 + 1.4, -8 + dz); p.castShadow = true; scene.add(p);
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.8, 8), yel); p.position.set(cx + dx, 0.19 + 1.4, -0.5 + dz); p.castShadow = true; scene.add(p);
     }
-    const roofm = new THREE.Mesh(new THREE.ConeGeometry(1.35, 0.9, 4), blue); roofm.rotation.y = Math.PI / 4; roofm.position.set(-4.5, 0.19 + 3.2, -8); roofm.castShadow = true; scene.add(roofm);
-    const slide = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.08, 3.4), blue); slide.position.set(-4.5, 0.19 + 0.85, -5.6); slide.rotation.x = -0.45; slide.castShadow = true; scene.add(slide); shootables.push(slide);
-    addCol(-4.85, -4.15, -7.2, -4, 0, 1.4, { sight: false });
-    // swings
+    const roofm = new THREE.Mesh(new THREE.ConeGeometry(1.35, 0.9, 4), blue); roofm.rotation.y = Math.PI / 4; roofm.position.set(cx, 0.19 + 3.2, -0.5); roofm.castShadow = true; scene.add(roofm);
+    const slide = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.08, 3.4), blue); slide.position.set(cx, 0.19 + 0.85, 1.9); slide.rotation.x = -0.45; slide.castShadow = true; scene.add(slide); shootables.push(slide);
+    addCol(cx - 0.35, cx + 0.35, 0.8, 4, 0, 1.4, { sight: false });
     const sf = new THREE.Group();
-    for (const x of [-6.2, -1.8]) for (const s of [-1, 1]) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 6), yel); l.position.set(x, 1.2, -4 + s * 0.5); l.rotation.x = s * 0.2; sf.add(l); }
-    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 4.4, 6), yel); bar.rotation.z = Math.PI / 2; bar.position.set(-4, 2.45, -4); sf.add(bar);
-    for (const x of [-5, -3]) { for (const dx of [-0.2, 0.2]) { const ch = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 1.8, 4), M.metal); ch.position.set(x + dx, 1.5, -4); sf.add(ch); } const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.22), M.dark); seat.position.set(x, 0.6, -4); sf.add(seat); }
-    sf.position.set(-0.3, 0.19, 5); sf.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(sf);
-    addCol(-6.6, -6.4, 0.4, 1.6, 0, 2.5, { sight: false }); addCol(-2.2, -2.0, 0.4, 1.6, 0, 2.5, { sight: false });
-    // spring riders
-    for (const [x, z, c] of [[-2.6, -10.5, yel], [-6.4, -11, red]]) {
+    for (const z of [-2.2, 2.2]) for (const sx of [-1, 1]) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 6), yel); l.position.set(sx * 0.5, 1.2, z); l.rotation.z = sx * 0.2; sf.add(l); }
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 4.4, 6), yel); bar.rotation.x = Math.PI / 2; bar.position.set(0, 2.45, 0); sf.add(bar);
+    for (const z of [-1, 1]) { for (const dz of [-0.2, 0.2]) { const ch = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 1.8, 4), M.metal); ch.position.set(0, 1.5, z + dz); sf.add(ch); } const seat = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.05, 0.5), M.dark); seat.position.set(0, 0.6, z); sf.add(seat); }
+    sf.position.set(cx, 0.19, 7.5); sf.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(sf);
+    addCol(cx - 0.6, cx + 0.6, 5.2, 5.4, 0, 2.5, { sight: false }); addCol(cx - 0.6, cx + 0.6, 9.6, 9.8, 0, 2.5, { sight: false });
+    for (const [x, z, c] of [[PG.x0 + 1.2, 11.3, yel], [PG.x1 - 1.2, 11.3, red]]) {
       const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.4, 8), M.metal); sp.position.set(x, 0.39, z); scene.add(sp);
-      const b = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), c); b.scale.set(1.3, 0.8, 0.7); b.position.set(x, 0.8, z); b.castShadow = true; scene.add(b);
+      const b = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), c); b.scale.set(0.7, 0.8, 1.3); b.position.set(x, 0.8, z); b.castShadow = true; scene.add(b);
     }
   }
+  // newspaper kiosk at the north-east corner (visible in the orthophoto)
+  box(2.6, 2.6, 2.6, std({ color: 0x2f5d3a, roughness: 0.6 }), 41.5, 0.15, -29.5);
+  box(3.2, 0.15, 3.2, M.white, 41.5, 2.75, -29.5, { col: false });
 
-  // ------------------------------------------------ buildings
+  // ------------------------------------------------ the 6-storey block (OpenStreetMap: building=apartments, building:levels=6)
   const building = (x0, z0, x1, z1, floors, fac, shop) => {
     const w = x1 - x0, d = z1 - z0, GH = 3.6, FH = 3, H = GH + floors * FH;
     const sx = (n) => std({ map: rep(shop, n / 14, 1) });
@@ -731,47 +811,34 @@ function barFront(xc, line1, line2, signCol, awnCol, tables) {
     u.position.set((x0 + x1) / 2, GH + floors * FH / 2, (z0 + z1) / 2); addMesh(u);
     const corn = new THREE.Mesh(new THREE.BoxGeometry(w + 0.5, 0.3, d + 0.5), M.wall); corn.position.set((x0 + x1) / 2, GH, (z0 + z1) / 2); addMesh(corn);
     const par = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, 0.6, d + 0.2), M.wall); par.position.set((x0 + x1) / 2, H + 0.3, (z0 + z1) / 2); addMesh(par, { shoot: false });
-    const roofTop = new THREE.Mesh(new THREE.PlaneGeometry(w, d).rotateX(-Math.PI / 2), M.roof); roofTop.position.set((x0 + x1) / 2, H + 0.62, (z0 + z1) / 2); scene.add(roofTop);
-    for (let i = 0; i < Math.max(2, w * d / 250); i++) {
-      const ax = R(x0 + 1, x1 - 1), az = R(z0 + 1, z1 - 1);
-      if (rnd() < 0.5) { const a = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, R(2, 4), 4), M.metal); a.position.set(ax, H + 2, az); a.castShadow = true; scene.add(a); }
-      else { const t = new THREE.Mesh(new THREE.BoxGeometry(R(0.8, 1.6), 0.9, R(0.8, 1.6)), M.wall); t.position.set(ax, H + 1.05, az); t.castShadow = true; scene.add(t); }
-    }
+    orthoRoof(x0, z0, x1, z1, H + 0.62);
     addCol(x0, x1, z0, z1, 0, H + 0.6);
+    return H;
   };
-  // the only residential facade: north end of the plaza, bars on the ground floor
-  building(-40, -60, -8, -46, 5, T.facadeA, T.shopRes);
-  building(-8, -60, 24, -46, 5, T.facadeA, T.shopRes);
-  // the two real bars of the building (positions from OpenStreetMap)
-  barFront(-28.5, 'BAR RESTAURANTE', 'LAS MORENAS', '#a3241c', '#c8392c', 3);
-  barFront(18.5, 'BAR', 'HERMANAS PENELLA', '#1e5a3a', '#2f7a4f', 2);
-  // warehouses (east of Moreres, south of Garrofers)
-  const warehouse = (x0, z0, x1, z1, h) => {
-    const w = x1 - x0, d = z1 - z0;
-    const mx = (n) => std({ map: rep(T.warehouse, n / 8, 1), normalMap: rep(T.warehouseN, n / 8, 1), roughness: 0.55, metalness: 0.35, envMapIntensity: 0.8 });
+  const B = RL.building;
+  building(B.x0, B.z0, B.x1, B.z1, B.levels - 1, T.facadeA, T.shopRes);
+  // ground floor venues, at their OpenStreetMap positions along the facade
+  barFront(-9.7, 'BAR RESTAURANTE', 'LAS MORENAS', '#a3241c', '#c8392c', 3, B.z1);
+  barFront(19.8, 'ASADOR', 'CASA PEPE', '#5a3a1e', '#8a5a2e', 2, B.z1);
+  barFront(34.6, 'BAR', 'HERMANAS PENELLA', '#1e5a3a', '#2f7a4f', 2, B.z1, 9);
+
+  // ------------------------------------------------ industrial units (footprints traced on the orthophoto, roofs = the real photo)
+  const warehouse = (x0, z0, x1, z1, h, variant = 0) => {
+    const w = x1 - x0, d = z1 - z0, tex = T.wall[variant % T.wall.length];
+    const mx = (n) => std({ map: rep(tex, n / 24, 1), normalMap: rep(T.warehouseN, n / 8, 1), normalScale: new THREE.Vector2(0.6, 0.6), roughness: 0.6, metalness: 0.25, envMapIntensity: 0.8 });
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [mx(d), mx(d), M.roof, M.roof, mx(w), mx(w)]);
     m.position.set((x0 + x1) / 2, h / 2, (z0 + z1) / 2); addMesh(m);
+    orthoRoof(x0, z0, x1, z1, h + 0.02);
     addCol(x0, x1, z0, z1, 0, h);
   };
-  warehouse(46, -46, 110, 26, 11);
-  warehouse(-14, 46, 40, 85, 9);
-  warehouse(44, 46, 110, 90, 10);
-  // industrial units across Carrer les Oliveres and Carrer els Garrofers
-  warehouse(-95, -38, -58, -6, 9);
-  warehouse(-95, -2, -58, 29, 10);
-  warehouse(-110, 44, -58, 85, 9);
-  warehouse(-95, -90, -58, -44, 9);
-  warehouse(37, -90, 70, -50, 9);
-  warehouse(-54, 44, -18, 80, 8);
-  // solar panels on the Moreres warehouse roof (as in the aerial view)
-  { const pm = new THREE.MeshStandardMaterial({ color: 0x1c2a44, metalness: 0.6, roughness: 0.25, envMapIntensity: 1 });
-    for (let x = 52; x < 104; x += 4.2) for (let z = -40; z < 20; z += 2.4) { const pnl = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.05, 2.1), pm); pnl.position.set(x, 11.4, z); pnl.rotation.z = -0.18; scene.add(pnl); } }
-  // white wall + fence in front of the warehouse yard
-  box(0.3, 1.1, 74, M.wall, 40.3, 0, -9, { sight: false });
-  for (let z = -46; z <= 28; z += 2.5) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.2, 6), M.green); p.position.set(40.3, 1.7, z); scene.add(p); }
-  { const fm = new THREE.MeshStandardMaterial({ map: rep(T.chain, 74 / 0.12, 1.2 / 0.12), alphaMap: rep(T.chain, 74 / 0.12, 1.2 / 0.12), alphaTest: 0.35, side: THREE.DoubleSide, color: 0x9fb5a5 });
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(74, 1.2), fm); p.rotation.y = Math.PI / 2; p.position.set(40.3, 1.7, -9); scene.add(p); }
-  flat(T.concrete, 40.5, -46, 46, 26, 0.02, 4, PB_concrete ? { layer: 1, pb: PB_concrete, pbTile: 3 } : { layer: 1 });
+  // west of Carrer les Oliveres
+  warehouse(-105, -27, -40.5, 30, 9, 0); warehouse(-105, -100, -40.5, -33, 10, 1); warehouse(-105, -128, -40.5, -103, 9, 2);
+  // north, behind the residential block
+  warehouse(-24, -72, 38, -52, 8, 2); warehouse(-24, -125, 38, -75, 9, 0);
+  // east of Carrer de les Moreres
+  warehouse(62, -27, 112, 0, 10, 1); warehouse(62, 3, 112, 30, 9, 2); warehouse(62, -52, 112, -30, 10, 0); warehouse(62, -95, 112, -55, 10, 1); warehouse(62, -128, 112, -100, 9, 2);
+  // south of Carrer els Garrofers
+  warehouse(-105, 51, -40.5, 128, 9, 1); warehouse(-22, 51, 40, 130, 10, 0); warehouse(62, 51, 112, 128, 10, 2);
 }
 
 // ------------------------------------------------ trees (merged for speed)
@@ -839,18 +906,15 @@ function tree(x, z, s = 1, kind = 'pine', baseY = 0.17) {
   addCol(x - 0.25 * s, x + 0.25 * s, z - 0.25 * s, z + 0.25 * s, 0, th, { sight: true, nav: true });
 }
 {
-  // park pines (dense, like the photos)
-  const spots = [[-3, 10], [2, 3], [5, 12], [9, 6], [12, 15], [15, 9], [16, -2], [12, -6], [14, -13], [3, 18], [-6, 14], [0, 15], [8, -1], [17, 4], [13, 1], [9, 19], [17, 18], [-6, 19], [16, -10]];
-  for (const [x, z] of spots) tree(x + R(-0.8, 0.8), z + R(-0.8, 0.8), R(0.9, 1.2), 'pine');
-  // strip between court and park
-  for (let z = -24; z <= 22; z += 7.5) tree(-10.5 + R(-0.4, 0.4), z + R(-1, 1), R(0.8, 1.05), rnd() < 0.6 ? 'pine' : 'leafy');
-  // north plaza
-  for (let x = -37; x <= 22; x += 6.5) if (Math.abs(x + 28.5) > 4 && Math.abs(x - 18.5) > 3.5) tree(x + R(-0.3, 0.3), -40 + R(-0.3, 0.3), R(0.85, 1.1), rnd() < 0.6 ? 'pine' : 'leafy');
-  for (const [x, z] of [[-30, -35], [-18, -38]]) tree(x, z, R(0.9, 1.1), 'pine');
-  // along Oliveres sidewalk (orange-tree style small leafy)
-  for (let z = -42; z < 100; z += 9) if (Math.abs(z - 35) > 6) tree(-54.5, z, R(0.6, 0.75), 'leafy', 0.15);
-  // along Garrofers south sidewalk
-  for (let x = -40; x < 40; x += 10) tree(x, 41, R(0.6, 0.8), 'leafy', 0.15);
+  // trees placed on the crowns visible in the orthophoto
+  // park pines: a column between the park and Carrer de les Moreres and a cluster at the south end
+  for (const [x, z] of [[33.5, -16], [33.5, -9.5], [33, -3], [33.5, 3.5], [34, 10], [34.5, 17], [35, 24], [25, 4], [7.5, 15.5], [12.5, 22], [18.5, 19.5], [24, 22], [28.5, 25.5]])
+    tree(x + R(-0.4, 0.4), z + R(-0.4, 0.4), R(0.95, 1.2), 'pine');
+  tree(24, -9, 0.6, 'leafy');
+  // row of leafy trees along the pedestrian street in front of the block
+  for (const x of [-18, -10.5, -3, 4.5, 12, 27, 38.5]) tree(x + R(-0.3, 0.3), -25.5 + R(-0.3, 0.3), R(1.05, 1.25), 'leafy');
+  // trees west of Carrer les Oliveres, near Carrer els Garrofers
+  for (const [x, z] of [[-44, 24], [-41.5, 30], [-48, 31]]) tree(x, z, R(0.9, 1.1), 'leafy', 0.02);
   const trunkMat = PB_bark ? Object.assign(std({ map: rep(PB_bark.map, 1, 3), normalMap: rep(PB_bark.normalMap, 1, 3), roughnessMap: rep(PB_bark.roughnessMap, 1, 3), roughness: 1, color: 0xd8c8b8 })) : std({ color: 0x6b5543, roughness: 0.95 });
   const trunks = new THREE.Mesh(mergeGeometries(trunkGeos), trunkMat); addMesh(trunks);
   const fol = (tex) => { const m = new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, roughness: 0.85, envMapIntensity: 0.5 }); FOLIAGE.push(m); return m; };
@@ -868,21 +932,23 @@ function bench(x, z, rot) {
   const sw = Math.abs(Math.sin(rot)) > 0.5;
   addCol(x - (sw ? 0.3 : 0.95), x + (sw ? 0.3 : 0.95), z - (sw ? 0.95 : 0.3), z + (sw ? 0.95 : 0.3), 0, 0.5, { sight: false, nav: false });
 }
-for (let z = -20; z <= 16; z += 6) bench(-8.3, z, -Math.PI / 2);
-for (const [x, z, r] of [[0, 20.3, Math.PI], [8, 20.3, Math.PI], [20.3, -10, Math.PI / 2], [20.3, 6, Math.PI / 2], [4, -17.3, 0], [12, -17.3, 0], [-20, -32, 0], [0, -37.5, 0], [10, -37.5, 0]]) bench(x, z, r);
+// benches along the strip between the court and the park (facing the court), and along the pedestrian street
+for (let z = -14; z <= 26; z += 6) bench(4.2, z, Math.PI / 2);
+for (const x of [-14, -6.5, 1, 8, 16, 31]) bench(x, -22.6, Math.PI);
+for (const [x, z, r] of [[14, -17.3, 0], [22, -17.3, 0], [40, -10, -Math.PI / 2], [40, 6, -Math.PI / 2]]) bench(x, z, r);
 function lamp(x, z) {
   const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 8, 8), M.metal); p.position.set(x, 4.15, z); p.castShadow = true; scene.add(p);
   const a = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1.2), M.metal); a.position.set(x, 8.1, z + 0.5); scene.add(a);
   const h = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.6), M.dark); h.position.set(x, 8.05, z + 1.1); h.castShadow = true; scene.add(h);
   shootables.push(p); addCol(x - 0.12, x + 0.12, z - 0.12, z + 0.12, 0, 8, { sight: false });
 }
-for (const [x, z] of [[-11, -28], [-11, 25], [20, -24], [20, 23], [-38, -38], [22, -38], [6, -30], [-25, 26], [5, 23], [-55, -40], [-55, 10], [38, -20], [38, 20], [-30, 42], [10, 42]]) lamp(x, z);
-for (const [x, z] of [[-9.5, -1], [19.5, 15], [2, -21.5], [-39, 26]]) {
+for (const [x, z] of [[-21.6, -16], [-21.6, 6], [-21.6, 27], [3.6, -10], [3.6, 12], [44.8, -18], [44.8, 4], [44.8, 26], [-34, -40], [-34, -10], [-34, 20], [60, -30], [60, 0], [60, 30], [-10, 30.5], [20, 30.5], [-20, 49], [15, 49], [45, 49], [0, -29], [24, -29]]) lamp(x, z);
+for (const [x, z] of [[4.4, -4], [4.4, 18], [28.5, -5], [-21.6, -2], [40, -22]]) {
   const b = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.22, 0.85, 12), std({ color: 0x3f6d3f })); b.position.set(x, 0.6, z); b.castShadow = true; scene.add(b); shootables.push(b);
   addCol(x - 0.25, x + 0.25, z - 0.25, z + 0.25, 0, 1.0, { sight: false });
 }
 // recycling containers on Oliveres (seen in the satellite view)
-for (const [z, c] of [[24, 0x2c6f3b], [26, 0xe2c22b], [28, 0x2a5fa8]]) box(1.8, 1.6, 1.5, std({ color: c, roughness: 0.6 }), -43, 0, z);
+for (const [z, c] of [[-22.2, 0x2c6f3b], [-20.4, 0xe2c22b], [-18.6, 0x2a5fa8]]) box(1.5, 1.6, 1.7, std({ color: c, roughness: 0.6 }), -23.2, 0, z);
 
 // ------------------------------------------------ cars
 const carGeo = {};
@@ -922,28 +988,28 @@ function car(x, z, rot, type = 'car', color) {
   for (const sz of [-1, 1]) { put(carInst.head, G.L / 2 + 0.02, 0.72, sz * 0.62); put(carInst.tail, -G.L / 2 - 0.02, 0.82, sz * 0.62); }
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   scene.add(g); shootables.push(b, gl);
-  const side = Math.abs(Math.sin(rot)) > 0.5;
-  const hx = (side ? G.W : G.L) / 2, hz = (side ? G.L : G.W) / 2;
+  const sn = Math.abs(Math.sin(rot)), cs = Math.abs(Math.cos(rot));
+  const hx = (G.L * cs + G.W * sn) / 2 * (sn > 0.2 && cs > 0.2 ? 0.85 : 1), hz = (G.L * sn + G.W * cs) / 2 * (sn > 0.2 && cs > 0.2 ? 0.85 : 1);
   addCol(x - hx, x + hx, z - hz, z + hz, 0, G.H, { sight: true, nav: true });
   return g;
 }
 {
-  // Oliveres east side: perpendicular parking along the court
-  for (let z = -50.7; z < 22; z += 2.6) if (rnd() < 0.82) car(-42.5, z, rnd() < 0.5 ? 0 : Math.PI);
-  // Oliveres west side: parallel parking
-  for (let z = -110; z < 100; z += 5.6) if (rnd() < 0.7 && Math.abs(z - 35) > 7) car(-51, z + R(-0.3, 0.3), Math.PI / 2 * (rnd() < 0.5 ? 1 : -1));
-  // Moreres west side: perpendicular parking along the park
-  for (let z = -50.7; z < 27; z += 2.6) if (rnd() < 0.8) car(26.5, z, rnd() < 0.5 ? 0 : Math.PI, rnd() < 0.08 ? 'van' : 'car');
-  // Moreres east side: parallel
-  for (let z = -100; z < 24; z += 6) if (rnd() < 0.55) car(34.8, z, -Math.PI / 2, rnd() < 0.2 ? 'van' : 'car');
-  // Garrofers north side: perpendicular
-  for (let x = -38.7; x < 23; x += 2.6) if (rnd() < 0.75) car(x, 30, Math.PI / 2 * (rnd() < 0.5 ? 1 : -1));
-  // Garrofers south: parallel
-  for (let x = -40; x < 40; x += 6) if (rnd() < 0.5) car(x, 37.6, rnd() < 0.5 ? 0 : Math.PI, rnd() < 0.15 ? 'van' : 'car');
-  // white van like in the street view
-  car(37.2, 22, -Math.PI / 2, 'van', 0xf3f3f1);
-  // a few in the warehouse yard
-  for (const z of [-40, -20, 0, 15]) car(43.5, z, Math.PI / 2);
+  const RL = REAL;
+  // Oliveres, block side: angled parking along the court
+  for (let z = -16.85; z < 28; z += 3.3) if (rnd() < 0.8) car(-23.1, z, rnd() < 0.5 ? Math.PI / 4 : -3 * Math.PI / 4);
+  // Oliveres, west side: parallel parking
+  for (let z = -120; z < 120; z += 5.6) if (rnd() < 0.7 && Math.abs(z - 33) > 6 && Math.abs(z - 50) > 5) car(-31.8, z + R(-0.3, 0.3), Math.PI / 2 * (rnd() < 0.5 ? 1 : -1));
+  // Moreres, block side: perpendicular parking along the park
+  for (let z = -19.7; z < 27; z += 2.6) if (rnd() < 0.8) car(47.8, z, rnd() < 0.5 ? 0 : Math.PI, rnd() < 0.08 ? 'van' : 'car');
+  // Moreres, east side: parallel
+  for (let z = -120; z < 120; z += 6) if (rnd() < 0.6 && Math.abs(z - 33) > 6 && Math.abs(z + 26) > 5 && Math.abs(z - 50) > 5) car(57.4, z, -Math.PI / 2, rnd() < 0.2 ? 'van' : 'car');
+  // Garrofers, north side: perpendicular, all along the plaza
+  for (let x = -16.7; x < 44; x += 2.6) if (rnd() < 0.85) car(x, 33.3, Math.PI / 2 * (rnd() < 0.5 ? 1 : -1));
+  // Garrofers, south side: parallel
+  for (let x = -110; x < 120; x += 6.5) if (rnd() < 0.45 && Math.abs(x - RL.oliveres) > 8 && Math.abs(x - RL.moreres) > 8) car(x, 46.2, rnd() < 0.5 ? 0 : Math.PI, rnd() < 0.15 ? 'van' : 'car');
+  // the white van from the street view, and the yard behind the block
+  car(57.4, 22, -Math.PI / 2, 'van', 0xf3f3f1);
+  for (const x of [-15, -8, 5, 12, 26]) if (rnd() < 0.8) car(x, -47, Math.PI / 2 * (rnd() < 0.5 ? 1 : -1));
   for (const [key, geo, mat] of [['wheel', wheelGeo, M.rubberTire], ['hub', hubGeo, M.metal], ['head', lightGeo, headMat], ['tail', lightGeo, tailMat]]) {
     const list = carInst[key]; const im = new THREE.InstancedMesh(geo, mat, list.length);
     list.forEach((m, i) => im.setMatrixAt(i, m)); im.castShadow = key === 'wheel'; im.receiveShadow = true; scene.add(im);
@@ -951,7 +1017,7 @@ function car(x, z, rot, type = 'car', color) {
 }
 
 // ------------------------------------------------ invisible map boundary
-const BOUNDS = { x0: -55, x1: 38.5, z0: -55.5, z1: 40.8 };
+const BOUNDS = { x0: -36.8, x1: 61.8, z0: -51, z1: 50.3 };
 addCol(BOUNDS.x0 - 2, BOUNDS.x0, -200, 200, 0, 50, { sight: false });
 addCol(BOUNDS.x1, BOUNDS.x1 + 2, -200, 200, 0, 50, { sight: false });
 addCol(-200, 200, BOUNDS.z0 - 2, BOUNDS.z0, 0, 50, { sight: false });
@@ -1017,7 +1083,7 @@ function nearCols(x0, x1, z0, z1) {
 }
 
 // ============================================================ navigation grid (A*)
-const NAV = { x0: -58, z0: -58, w: 98, h: 102 };
+const NAV = { x0: -40, z0: -56, w: 105, h: 110 };
 const navBlocked = new Uint8Array(NAV.w * NAV.h);
 for (const c of colliders) {
   if (!c.nav) continue;
@@ -1564,7 +1630,7 @@ function updatePickups(dt) {
 
 // ============================================================ game state
 const G = { state: 'menu', wave: 0, toSpawn: 0, alive: 0, kills: 0, score: 0, spawnCd: 0, interT: 0, locked: false, everLocked: false, time: 0 };
-const SPAWNS = [[-48.5, -52], [-48.5, -20], [-48.5, 12], [-48.5, 34], [32.5, -52], [32.5, -18], [32.5, 14], [32.5, 34], [0, 35.5], [-25, 35.5], [15, 35.5], [-48.5, -42], [32.5, -42]];
+const SPAWNS = [[-29, -49], [-29, -20], [-29, 12], [-29, 46], [54.3, -49], [54.3, -20], [54.3, 10], [54.3, 46], [-34, 41.5], [0, 41.5], [30, 41.5], [61, 41.5], [5, -48], [30, -48]];
 function startWave() {
   G.wave++; G.toSpawn = 3 + G.wave * 2; G.spawnCd = 1.5;
   banner('OLEADA ' + G.wave, G.toSpawn + ' enemigos se acercan', 2.4);
@@ -1608,33 +1674,35 @@ function hurtPlayer(dmg, from) {
 for (let i = 0; i < WEAPONS.length; i++) { const s = document.createElement('span'); s.textContent = (i + 1); hud.slots.appendChild(s); }
 function streetName() {
   const { x, z } = player.pos;
-  if (x < -44 && x > -53) return 'Carrer les Oliveres';
-  if (x > 29) return 'Carrer les Moreres';
-  if (z > 31) return 'Carrer els Garrofers';
-  if (x >= -37 && x <= -12 && z >= -27 && z <= 23) return 'Pista de fútbol La Losa';
-  if (x >= -8 && x <= -1.5 && z >= -12 && z <= 6) return 'Parque infantil';
-  if (x >= 2.5 && x <= 9.5 && z >= -13 && z <= -5) return 'Mesa de ping-pong';
-  if (z < -40 && x > -36 && x < -21) return 'Bar Restaurante Las Morenas';
-  if (z < -40 && x > 12 && x < 25) return 'Bar Hermanas Penella';
-  if (z < -38.5 && x > -40 && x < 24) return 'Pl. Marqués de Llanera';
-  if (x > -9 && z < -16) return 'Explanada';
+  if (x > -32.8 && x < -25.2) return 'Carrer les Oliveres';
+  if (x > 50 && x < 58.5) return 'Carrer de les Moreres';
+  if (z > 35.5 && z < 47.5) return 'Carrer els Garrofers';
+  if (x >= -20.5 && x <= 2.5 && z >= -18 && z <= 29.5) return 'Pista de fútbol La Losa';
+  if (x >= 5.5 && x <= 12.5 && z >= -4 && z <= 12.5) return 'Parque infantil';
+  if (x >= 15.5 && x <= 21.5 && z >= 3 && z <= 13) return 'Mesa de ping-pong';
+  if (z < -27 && x > -15 && x < -4.5) return 'Bar Restaurante Las Morenas';
+  if (z < -27 && x > 15 && x < 24.5) return 'Asador Casa Pepe';
+  if (z < -27 && x > 30 && x < 39.6) return 'Bar Hermanas Penella';
+  if (z < -18.5) return 'Pl. Marqués de Llanera';
+  if (x >= 4 && x <= 29 && z >= -18 && z <= -6) return 'Explanada';
   return 'Plaza Marqués Llanera';
 }
-// minimap
+// minimap: the real orthophoto, like the satellite view in Google Maps
 const mapC = $('map'), mapG = mapC.getContext('2d');
-const MAP = { x0: -62, z0: -60, s: 1.72 };
+const MAP = { x0: -42, z0: -58, s: 1.55 };
 const mapBg = document.createElement('canvas'); mapBg.width = 180; mapBg.height = 172;
 {
   const g = mapBg.getContext('2d'); const S = MAP.s;
-  const rect = (x0, z0, x1, z1, c) => { g.fillStyle = c; g.fillRect((x0 - MAP.x0) * S, (z0 - MAP.z0) * S, (x1 - x0) * S, (z1 - z0) * S); };
-  rect(-200, -200, 200, 200, '#e8e4dc');
-  rect(-53, -200, -44, 200, '#ffffff'); rect(28.5, -200, 37, 200, '#ffffff'); rect(-200, 31.5, 200, 39.5, '#ffffff'); rect(-200, -58, 200, -54, '#ffffff');
-  rect(-40, -46, 24, 27.6, '#d9d0bf');
-  rect(-37, -27, -13, 23, '#b9cdb2'); rect(-9, -38.5, 24, -16.5, '#cbcac5'); rect(-9, -16, 19, 21, '#c9e0b8'); rect(-8, -12, -1.5, 6, '#3aa58a'); rect(2.5, -13, 9.5, -5, '#bdbdbd');
-  rect(-40, -60, 24, -46, '#e3c9a8');
-  rect(-95, -90, -58, 29, '#cfd3d6'); rect(37, -90, 70, -50, '#cfd3d6'); rect(-110, 44, -18, 85, '#cfd3d6'); rect(46, -46, 110, 26, '#cfd3d6'); rect(-14, 46, 110, 90, '#cfd3d6');
-  g.strokeStyle = '#7fb3e8'; g.lineWidth = 2;
-  for (const [x0, z0, x1, z1] of [[-48.5, -200, -48.5, 200], [32.5, -200, 32.5, 200], [-200, 35.5, 200, 35.5]]) { g.beginPath(); g.moveTo((x0 - MAP.x0) * S, (z0 - MAP.z0) * S); g.lineTo((x1 - MAP.x0) * S, (z1 - MAP.z0) * S); g.stroke(); }
+  if (ORTHO && ORTHO.image) {
+    const k = ORTHO.image.width / 260;
+    g.drawImage(ORTHO.image, (MAP.x0 + 130) * k, (MAP.z0 + 130) * k, 180 / S * k, 172 / S * k, 0, 0, 180, 172);
+  } else {
+    const rect = (x0, z0, x1, z1, c) => { g.fillStyle = c; g.fillRect((x0 - MAP.x0) * S, (z0 - MAP.z0) * S, (x1 - x0) * S, (z1 - z0) * S); };
+    rect(-200, -200, 200, 200, '#e8e4dc'); rect(-21, -32.9, 45.5, 31, '#d9d0bf'); rect(-20.5, -18, 2.5, 29.5, '#b9cdb2'); rect(5.1, -4.4, 29.5, 28.5, '#c9e0b8'); rect(-23.4, -43.3, 39.6, -32.9, '#e3c9a8');
+  }
+  g.font = 'bold 9px sans-serif'; g.fillStyle = 'rgba(255,255,255,.9)'; g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 2;
+  const label = (t, x, z, rot = 0) => { g.save(); g.translate((x - MAP.x0) * S, (z - MAP.z0) * S); g.rotate(rot); g.strokeText(t, 0, 0); g.fillText(t, 0, 0); g.restore(); };
+  label('C. les Oliveres', -30.5, 20, -Math.PI / 2); label('C. de les Moreres', 52.8, 20, -Math.PI / 2); label('C. els Garrofers', -38, 44.5);
 }
 function drawMap() {
   const S = MAP.s; mapG.drawImage(mapBg, 0, 0);
@@ -1727,7 +1795,7 @@ function startGame() {
   initAudio();
   for (const e of enemies) scene.remove(e.mesh); enemies.length = 0; enemyParts.length = 0;
   for (const p of pickups) scene.remove(p.g); pickups.length = 0;
-  Object.assign(player, { hp: 100, crouch: false, eye: 1.62, yaw: 2.3, pitch: 0 }); player.pos.set(8, 0.17, 0); player.vel.set(0, 0, 0);
+  Object.assign(player, { hp: 100, crouch: false, eye: 1.62, yaw: 2.6, pitch: 0 }); player.pos.set(16, 0.17, -12); player.vel.set(0, 0, 0);
   for (const W of WEAPONS) { W.mag = W.magSize; W.reserve = W.reserve0; W.g.visible = false; }
   cur = 2; WEAPONS[cur].g.visible = true; WEAPONS[cur].g.position.copy(WEAPONS[cur].hipV);
   reloading = 0; heat = 0;
@@ -1910,7 +1978,7 @@ const sunRight = new V3().crossVectors(SUN_DIR, new V3(0, 1, 0)).normalize(), su
 function updateSun() {
   const Q = QUALITY[qPreset], texel = 2 * Q.range / Q.shadow, c = camera.position;
   const fwd = new V3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
-  const p = G.state === 'menu' ? new V3(-8, 0, -4) : new V3(c.x, 0, c.z).addScaledVector(fwd, Q.range * 0.4);
+  const p = G.state === 'menu' ? new V3(8, 0, 2) : new V3(c.x, 0, c.z).addScaledVector(fwd, Q.range * 0.4);
   const a = Math.round(p.dot(sunRight) / texel) * texel, b = Math.round(p.dot(sunUp) / texel) * texel, d = p.dot(SUN_DIR);
   SUN.target.position.copy(sunRight).multiplyScalar(a).addScaledVector(sunUp, b).addScaledVector(SUN_DIR, d);
   SUN.position.copy(SUN.target.position).addScaledVector(SUN_DIR, 150);
@@ -1953,8 +2021,8 @@ function frame() {
     updateWaves(dt); updatePickups(dt);
   } else if (G.state === 'menu') {
     menuT += dt * 0.06;
-    camera.position.set(-6 + Math.cos(menuT) * 34, 14, -2 + Math.sin(menuT) * 30);
-    camera.lookAt(-8, 1, -2);
+    camera.position.set(8 + Math.cos(menuT) * 38, 16, 2 + Math.sin(menuT) * 34);
+    camera.lookAt(8, 1, 0);
   }
   if (G.state !== 'pause') updateFx(dt);
   updateHUD(dt);
