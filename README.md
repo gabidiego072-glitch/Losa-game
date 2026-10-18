@@ -36,6 +36,24 @@ Empiezas con 2 granadas y 2 flashes; las cajas de munición y cada oleada supera
 Sobrevive a oleadas de enemigos cada vez más numerosos y precisos. Usa los coches, los troncos y
 los edificios como cobertura. Los enemigos dejan botiquines y munición al caer.
 
+## Dos jugadores (1 contra 1 o cooperativo)
+
+En la pantalla de inicio, en **DOS JUGADORES**:
+
+1. Uno elige el modo (**Cooperativo**: los dos contra las oleadas · **1 contra 1**: gana el primero en llegar a 10 bajas) y pulsa **CREAR PARTIDA**. Sale un código de 4 letras y un enlace.
+2. El otro escribe el código y pulsa **UNIRSE** (o abre el enlace directamente).
+3. Cuando aparezca «¡Tu amigo se ha unido!», el anfitrión pulsa **EMPEZAR**.
+
+Funciona navegador a navegador (WebRTC con PeerJS): no hace falta servidor propio. El ordenador del anfitrión controla a los enemigos. En cooperativo, si caes reapareces al empezar la siguiente oleada; si caéis los dos, se acaba. En 1 contra 1 reapareces a los 3 segundos lejos del rival y la invencibilidad está desactivada.
+
+Algunas redes muy restrictivas (colegios, empresas) bloquean la conexión directa entre navegadores; en casa normalmente funciona.
+
+### Publicarlo gratis con GitHub Pages
+
+1. En GitHub, abre el repositorio → **Settings** → **Pages**.
+2. En *Build and deployment* elige **Deploy from a branch**, la rama del juego y la carpeta **/ (root)**, y guarda.
+3. En un par de minutos tendrás el enlace `https://<tu-usuario>.github.io/<repositorio>/` para compartir con tus amigos.
+
 ## Armas
 
 | Tecla | Arma | Notas |
