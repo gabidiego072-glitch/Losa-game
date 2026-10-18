@@ -75,6 +75,9 @@
   #scope .v{top:0;bottom:0;left:50%;width:2px;margin-left:-1px}
   #god{left:50%;top:70px;transform:translateX(-50%);display:none;background:rgba(255,210,60,.92);color:#1a1205;font-weight:700;letter-spacing:.18em;padding:3px 12px;border-radius:5px;font-size:15px}
   button:disabled{opacity:.6;cursor:wait}
+  .qrow{display:flex;gap:10px;align-items:center;justify-content:center;margin:0 0 16px;font-size:17px}
+  .qrow select{font-family:inherit;font-size:16px;background:#2a2f34;color:#fff;border:1px solid #555;border-radius:6px;padding:4px 8px}
+  #fps{left:16px;top:92px;font-size:14px;color:var(--muted);display:none;background:var(--panel);padding:3px 8px;border-radius:5px}
   @media (max-width:640px){ #mapwrap{width:120px;height:115px} #street{max-width:calc(100vw - 160px)} #street span{display:none} }
 </style>
 <script type="importmap">
@@ -97,6 +100,7 @@
 <div class="hud" id="banner"></div>
 <div class="hud" id="scope"><i class="h"></i><i class="v"></i></div>
 <div class="hud" id="god">INVENCIBLE</div>
+<div class="hud" id="fps"></div>
 <div class="hud" id="hp"><div class="lbl">SALUD</div><div class="num" id="hpNum">100</div><div class="bar"><div class="fill" id="hpFill"></div></div></div>
 <div class="hud" id="ammo"><div class="wn" id="wname"></div><div class="slots" id="slots"></div><div class="st" id="ammoSt"></div><div class="mag" id="mag">30</div><div class="res" id="res">/ 120</div></div>
 
@@ -113,8 +117,10 @@
       <span><kbd>R</kbd></span><span>Recargar</span>
       <span><kbd>1</kbd>–<kbd>5</kbd> / rueda</span><span>Cambiar arma: pistola, subfusil, fusil, escopeta, francotirador</span>
       <span><kbd>O</kbd></span><span>Invencibilidad (activar / desactivar)</span>
+      <span><kbd>F</kbd></span><span>Mostrar FPS y calidad</span>
       <span><kbd>Esc</kbd></span><span>Pausa</span>
     </div>
+    <div class="qrow"><label for="quality">Calidad gráfica</label><select id="quality"><option value="auto">Automática (recomendada)</option><option value="alta">Alta</option><option value="media">Media</option><option value="baja">Baja</option></select></div>
     <button id="playBtn" disabled>CARGANDO…</button>
     <div id="loading">Cargando texturas y modelos reales…</div>
   </div>
@@ -134,11 +140,24 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { computeBoundsTree, acceleratedRaycast } from 'https://unpkg.com/three-mesh-bvh@0.7.6/build/index.module.js';
+THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
+THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 // ============================================================ setup
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+// quality presets; the render scale also adapts every couple of seconds to keep the game smooth
+const QUALITY = {
+  alta: { label: 'Alta', maxScale: 1.0, minScale: 0.6, samples: 4, bloom: true, shadow: 2048, range: 45 },
+  media: { label: 'Media', maxScale: 0.85, minScale: 0.55, samples: 2, bloom: true, shadow: 2048, range: 38 },
+  baja: { label: 'Baja', maxScale: 0.7, minScale: 0.45, samples: 0, bloom: false, shadow: 1024, range: 32 },
+};
+let qMode = 'auto'; try { qMode = localStorage.getItem('plaza-quality') || 'auto'; } catch (e) { }
+let qPreset = qMode === 'auto' ? 'alta' : qMode;
+const BASE_DPR = Math.min(devicePixelRatio, 1.5);
+let renderScale = QUALITY[qPreset].maxScale;
+renderer.setPixelRatio(BASE_DPR * renderScale);
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -157,7 +176,7 @@ const loadEl = document.getElementById('loading');
 const manager = new THREE.LoadingManager();
 manager.onProgress = (url, done, total) => { loadEl.textContent = `Cargando texturas y modelos reales… ${done}/${total}`; };
 const texLoader = new THREE.TextureLoader(manager);
-const MAXANISO = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+const MAXANISO = Math.min(16, renderer.capabilities.getMaxAnisotropy());
 async function loadPBR(name) {
   try {
     const [map, normalMap, roughnessMap] = await Promise.all(['diff', 'nor', 'rough'].map(k => texLoader.loadAsync(`assets/${name}_${k}.jpg`)));
@@ -197,6 +216,7 @@ if (HDR) {
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 }
 
+let SUN = null;
 // weapon is drawn in its own pass so it never clips into walls
 const gunScene = new THREE.Scene();
 const gunCam = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 10);
@@ -204,13 +224,13 @@ gunScene.environment = scene.environment;
 {
   const hemi = new THREE.HemisphereLight(0xd6e6ff, 0x8a7a62, HDR ? 0.25 : 0.75);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff0d8, 3.0);
+  const sun = SUN = new THREE.DirectionalLight(0xfff0d8, 3.0);
   const C = new THREE.Vector3(-8, 0, -6);
   sun.position.copy(C).addScaledVector(SUN_DIR, 120);
   sun.target.position.copy(C);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096);
-  const s = sun.shadow.camera; s.left = -85; s.right = 85; s.top = 85; s.bottom = -85; s.near = 10; s.far = 300;
+  sun.shadow.mapSize.set(QUALITY[qPreset].shadow, QUALITY[qPreset].shadow);
+  const R0 = QUALITY[qPreset].range, s = sun.shadow.camera; s.left = -R0; s.right = R0; s.top = R0; s.bottom = -R0; s.near = 10; s.far = 300;
   sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.03; sun.shadow.radius = 2;
   scene.add(sun, sun.target);
   gunScene.add(new THREE.HemisphereLight(0xd6e6ff, 0x8a7a62, 0.5));
@@ -755,7 +775,7 @@ function barFront(xc, line1, line2, signCol, awnCol, tables) {
 }
 
 // ------------------------------------------------ trees (merged for speed)
-const trunkGeos = [], leafGeos = [];
+const trunkGeos = [], leafGeos = [], FOLIAGE = [];
 const tmpM = new THREE.Matrix4(), tmpQ = new THREE.Quaternion(), tmpS = new V3(), tmpP = new V3();
 function jitter(geo, amt) {
   const p = geo.attributes.position;
@@ -833,7 +853,7 @@ function tree(x, z, s = 1, kind = 'pine', baseY = 0.17) {
   for (let x = -40; x < 40; x += 10) tree(x, 41, R(0.6, 0.8), 'leafy', 0.15);
   const trunkMat = PB_bark ? Object.assign(std({ map: rep(PB_bark.map, 1, 3), normalMap: rep(PB_bark.normalMap, 1, 3), roughnessMap: rep(PB_bark.roughnessMap, 1, 3), roughness: 1, color: 0xd8c8b8 })) : std({ color: 0x6b5543, roughness: 0.95 });
   const trunks = new THREE.Mesh(mergeGeometries(trunkGeos), trunkMat); addMesh(trunks);
-  const fol = (tex) => new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, roughness: 0.85, envMapIntensity: 0.5 });
+  const fol = (tex) => { const m = new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, roughness: 0.85, envMapIntensity: 0.5 }); FOLIAGE.push(m); return m; };
   addMesh(new THREE.Mesh(mergeGeometries(leafGeos), fol(T.needles)), { shoot: false });
   addMesh(new THREE.Mesh(mergeGeometries(leafyGeos), fol(T.leaves)), { shoot: false });
 }
@@ -886,11 +906,12 @@ const wheelGeo = new THREE.CylinderGeometry(0.33, 0.33, 0.22, 16).rotateX(Math.P
 const hubGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.235, 10).rotateX(Math.PI / 2);
 const lightGeo = new THREE.BoxGeometry(0.06, 0.12, 0.35);
 const headMat = std({ color: 0xf4f1e6, emissive: 0x222222 }), tailMat = std({ color: 0xb01818, emissive: 0x330000 });
-const carInst = { wheel: [], hub: [], head: [], tail: [] };
+const carInst = { wheel: [], hub: [], head: [], tail: [] }, PAINTS = {};
 const carCols = [0x1b1c1e, 0x2b2d31, 0x76797d, 0xb9bcbf, 0xf1f1ef, 0x8e1c1c, 0x1d2f55, 0x3a3f45, 0xe8e8e6, 0x5a1e1e];
 function car(x, z, rot, type = 'car', color) {
   const G = carGeo[type];
-  const paint = new THREE.MeshPhysicalMaterial({ color: color ?? carCols[(rnd() * carCols.length) | 0], metalness: 0.5, roughness: 0.38, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.0 });
+  const col = color ?? carCols[(rnd() * carCols.length) | 0];
+  const paint = PAINTS[col] || (PAINTS[col] = new THREE.MeshPhysicalMaterial({ color: col, metalness: 0.5, roughness: 0.38, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 1.0 }));
   const g = new THREE.Group();
   const b = new THREE.Mesh(G.body, paint); const gl = new THREE.Mesh(G.glass, glassMat);
   g.add(b, gl);
@@ -940,6 +961,60 @@ addCol(-200, 200, BOUNDS.z1, BOUNDS.z1 + 2, 0, 50, { sight: false });
 scene.traverse(o => { if (o.isMesh && o.material && !Array.isArray(o.material) && o.material.envMapIntensity === 1 && o.material.roughness > 0.7) o.material.envMapIntensity = 0.35; });
 
 const sightCols = colliders.filter(c => c.sight);
+
+// merge every static mesh that shares a material into one draw call
+function bakeStatic() {
+  scene.updateMatrixWorld(true);
+  const shootSet = new Set(shootables), groups = new Map();
+  scene.traverse(o => {
+    if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || Array.isArray(o.material) || o.material === M.invisible) return;
+    const key = o.material.uuid + (o.castShadow ? 'c' : '') + (o.receiveShadow ? 'r' : '');
+    let g = groups.get(key); if (!g) groups.set(key, g = { mat: o.material, cast: o.castShadow, rec: o.receiveShadow, objs: [] });
+    g.objs.push(o);
+  });
+  let removed = 0, made = 0;
+  for (const g of groups.values()) {
+    if (g.objs.length < 2) continue;
+    const geos = g.objs.map(o => {
+      const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone();
+      geo.applyMatrix4(o.matrixWorld);
+      for (const k of Object.keys(geo.attributes)) if (!['position', 'normal', 'uv'].includes(k) && !(k === 'color' && g.mat.vertexColors)) geo.deleteAttribute(k);
+      if (!geo.attributes.uv) geo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count * 2), 2));
+      if (!geo.attributes.normal) geo.computeVertexNormals();
+      geo.clearGroups(); geo.morphAttributes = {};
+      return geo;
+    });
+    const merged = mergeGeometries(geos); if (!merged) continue;
+    const mesh = new THREE.Mesh(merged, g.mat); mesh.castShadow = g.cast; mesh.receiveShadow = g.rec; mesh.matrixAutoUpdate = false;
+    scene.add(mesh); made++;
+    if (g.objs.some(o => shootSet.has(o))) shootables.push(mesh);
+    for (const o of g.objs) { o.parent.remove(o); const i = shootables.indexOf(o); if (i >= 0) shootables.splice(i, 1); removed++; }
+  }
+  for (const m of shootables) if (m.geometry.attributes.position.count > 200) m.geometry.computeBoundsTree();
+  // drop now-empty groups
+  scene.traverse(o => { if (o.isGroup && o.children.length === 0 && o.parent) o.userData.empty = true; });
+  console.info(`static batching: ${removed} meshes -> ${made}`);
+}
+bakeStatic();
+scene.traverse(o => { if (!o.isMesh) return; o.matrixAutoUpdate = false; o.updateMatrix(); });
+
+// uniform grid over the colliders so movement only checks nearby boxes
+const CG = { x0: -220, z0: -220, cs: 4, n: 110, stamp: 0 };
+CG.cells = Array.from({ length: CG.n * CG.n }, () => []);
+for (const c of colliders) {
+  c._s = 0;
+  const i0 = Math.max(0, Math.floor((c.minX - CG.x0) / CG.cs)), i1 = Math.min(CG.n - 1, Math.floor((c.maxX - CG.x0) / CG.cs));
+  const j0 = Math.max(0, Math.floor((c.minZ - CG.z0) / CG.cs)), j1 = Math.min(CG.n - 1, Math.floor((c.maxZ - CG.z0) / CG.cs));
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) CG.cells[j * CG.n + i].push(c);
+}
+const colBuf = [];
+function nearCols(x0, x1, z0, z1) {
+  colBuf.length = 0; const st = ++CG.stamp;
+  const i0 = Math.max(0, Math.floor((x0 - CG.x0) / CG.cs)), i1 = Math.min(CG.n - 1, Math.floor((x1 - CG.x0) / CG.cs));
+  const j0 = Math.max(0, Math.floor((z0 - CG.z0) / CG.cs)), j1 = Math.min(CG.n - 1, Math.floor((z1 - CG.z0) / CG.cs));
+  for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) for (const c of CG.cells[j * CG.n + i]) if (c._s !== st) { c._s = st; colBuf.push(c); }
+  return colBuf;
+}
 
 // ============================================================ navigation grid (A*)
 const NAV = { x0: -58, z0: -58, w: 98, h: 102 };
@@ -1003,16 +1078,17 @@ function walkLine(a, b) {
 // ============================================================ physics helpers
 function groundAt(x, z, r, feet) {
   let g = 0;
-  for (const c of colliders) {
+  for (const c of nearCols(x - r, x + r, z - r, z + r)) {
     if (c.maxY > feet + 0.5) continue;
     if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ && c.maxY > g) g = c.maxY;
   }
   return g;
 }
 function resolve(pos, r, feet, h) {
+  const list = nearCols(pos.x - r - 1, pos.x + r + 1, pos.z - r - 1, pos.z + r + 1).slice();
   for (let it = 0; it < 3; it++) {
     let moved = false;
-    for (const c of colliders) {
+    for (const c of list) {
       if (c.maxY <= feet + 0.5 || c.minY >= feet + h) continue;
       const cx = Math.max(c.minX, Math.min(pos.x, c.maxX)), cz = Math.max(c.minZ, Math.min(pos.z, c.maxZ));
       let dx = pos.x - cx, dz = pos.z - cz; const d2 = dx * dx + dz * dz;
@@ -1029,14 +1105,15 @@ function resolve(pos, r, feet, h) {
 }
 function segBlocked(a, b) {
   const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
-  outer: for (const c of sightCols) {
-    let t0 = 0, t1 = 1;
-    const ax = [[a.x, dx, c.minX, c.maxX], [a.y, dy, c.minY, c.maxY], [a.z, dz, c.minZ, c.maxZ]];
-    for (const [o, d, mn, mx] of ax) {
-      if (Math.abs(d) < 1e-9) { if (o < mn || o > mx) continue outer; }
-      else { let u = (mn - o) / d, v = (mx - o) / d; if (u > v) [u, v] = [v, u]; if (u > t0) t0 = u; if (v < t1) t1 = v; if (t0 > t1) continue outer; }
-    }
-    return true;
+  const slab = (o, d, mn, mx, t) => {
+    if (Math.abs(d) < 1e-9) return (o < mn || o > mx) ? null : t;
+    let u = (mn - o) / d, v = (mx - o) / d; if (u > v) { const w = u; u = v; v = w; }
+    t[0] = Math.max(t[0], u); t[1] = Math.min(t[1], v); return t[0] > t[1] ? null : t;
+  };
+  const t = [0, 1];
+  for (const c of sightCols) {
+    t[0] = 0; t[1] = 1;
+    if (slab(a.x, dx, c.minX, c.maxX, t) && slab(a.y, dy, c.minY, c.maxY, t) && slab(a.z, dz, c.minZ, c.maxZ, t)) return true;
   }
   return false;
 }
@@ -1512,7 +1589,7 @@ function updateWaves(dt) {
 
 // ============================================================ HUD
 const $ = (id) => document.getElementById(id);
-const hud = { hpNum: $('hpNum'), hpFill: $('hpFill'), mag: $('mag'), res: $('res'), st: $('ammoSt'), wave: $('waveTxt'), info: $('infoTxt'), banner: $('banner'), vig: $('vig'), hit: $('hit'), cross: $('cross'), dirs: $('dirs'), street: $('streetName'), wname: $('wname'), slots: $('slots'), scope: $('scope'), god: $('god') };
+const hud = { hpNum: $('hpNum'), hpFill: $('hpFill'), mag: $('mag'), res: $('res'), st: $('ammoSt'), wave: $('waveTxt'), info: $('infoTxt'), banner: $('banner'), vig: $('vig'), hit: $('hit'), cross: $('cross'), dirs: $('dirs'), street: $('streetName'), wname: $('wname'), slots: $('slots'), scope: $('scope'), god: $('god'), fps: $('fps') };
 let bannerT = 0, hitT = 0, vigT = 0;
 function banner(t, sub, dur) { hud.banner.innerHTML = t + (sub ? '<small>' + sub + '</small>' : ''); hud.banner.style.opacity = 1; bannerT = dur; }
 function showHit(head) { hud.hit.className = 'hud' + (head ? ' head' : ''); hud.hit.style.opacity = 1; hitT = 0.12; sfxClick(head ? 2600 : 1900, 0.18, 0.03); }
@@ -1573,31 +1650,36 @@ function drawMap() {
   mapG.beginPath(); mapG.moveTo(0, -6); mapG.lineTo(4.5, 5); mapG.lineTo(0, 2.5); mapG.lineTo(-4.5, 5); mapG.closePath(); mapG.fill(); mapG.stroke();
   mapG.restore();
 }
+const txt = (el, v) => { if (el._v !== v) { el._v = v; el.textContent = v; } };
+const sty = (el, k, v) => { const key = '_' + k; if (el[key] !== v) { el[key] = v; el.style[k] = v; } };
+let hudFrame = 0;
 function updateHUD(dt) {
-  const W = WEAPONS[cur];
-  hud.hpNum.textContent = player.god ? '∞' : Math.ceil(player.hp);
-  hud.hpFill.style.width = player.hp + '%';
-  hud.hpFill.style.background = player.god ? '#ffd23c' : player.hp > 50 ? 'var(--ok)' : player.hp > 25 ? 'var(--accent)' : 'var(--danger)';
-  hud.god.style.display = player.god ? 'block' : 'none';
-  hud.mag.textContent = W.mag; hud.res.textContent = '/ ' + W.reserve;
-  hud.mag.style.color = W.mag <= Math.ceil(W.magSize / 5) ? 'var(--danger)' : '';
-  hud.st.textContent = reloading > 0 ? 'RECARGANDO…' : (W.mag === 0 ? (W.reserve ? 'PULSA R' : 'SIN MUNICIÓN') : '');
-  hud.wname.textContent = W.name;
-  [...hud.slots.children].forEach((s, i) => s.className = i === cur ? 'on' : (WEAPONS[i].mag + WEAPONS[i].reserve === 0 ? 'empty' : ''));
-  hud.wave.textContent = G.interT > 0 ? 'DESCANSO · ' + Math.ceil(G.interT) : 'OLEADA ' + G.wave;
-  hud.info.textContent = `Enemigos: ${G.alive + G.toSpawn} · Bajas: ${G.kills} · Puntos: ${G.score}`;
-  hud.street.textContent = streetName();
+  const W = WEAPONS[cur]; hudFrame++;
+  txt(hud.hpNum, player.god ? '∞' : String(Math.ceil(player.hp)));
+  sty(hud.hpFill, 'width', Math.round(player.hp) + '%');
+  sty(hud.hpFill, 'background', player.god ? '#ffd23c' : player.hp > 50 ? 'var(--ok)' : player.hp > 25 ? 'var(--accent)' : 'var(--danger)');
+  sty(hud.god, 'display', player.god ? 'block' : 'none');
+  txt(hud.mag, String(W.mag)); txt(hud.res, '/ ' + W.reserve);
+  sty(hud.mag, 'color', W.mag <= Math.ceil(W.magSize / 5) ? 'var(--danger)' : '');
+  txt(hud.st, reloading > 0 ? 'RECARGANDO…' : (W.mag === 0 ? (W.reserve ? 'PULSA R' : 'SIN MUNICIÓN') : ''));
+  txt(hud.wname, W.name);
+  [...hud.slots.children].forEach((s, i) => { const c = i === cur ? 'on' : (WEAPONS[i].mag + WEAPONS[i].reserve === 0 ? 'empty' : ''); if (s.className !== c) s.className = c; });
+  txt(hud.wave, G.interT > 0 ? 'DESCANSO · ' + Math.ceil(G.interT) : 'OLEADA ' + G.wave);
+  txt(hud.info, `Enemigos: ${G.alive + G.toSpawn} · Bajas: ${G.kills} · Puntos: ${G.score}`);
+  if (hudFrame % 10 === 0) txt(hud.street, streetName());
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) hud.banner.style.opacity = 0; }
   if (hitT > 0) { hitT -= dt; if (hitT <= 0) hud.hit.style.opacity = 0; }
   vigT = Math.max(0, vigT - dt);
-  hud.vig.style.opacity = Math.min(1, vigT * 1.6 + (!player.god && player.hp < 35 ? (35 - player.hp) / 50 : 0));
+  sty(hud.vig, 'opacity', String(Math.round(Math.min(1, vigT * 1.6 + (!player.god && player.hp < 35 ? (35 - player.hp) / 50 : 0)) * 50) / 50));
   const sp = currentSpread() * 900 + 4;
   const ch = hud.cross.children;
-  ch[0].style.top = (-sp - 9) + 'px'; ch[1].style.top = sp + 'px'; ch[2].style.left = (-sp - 9) + 'px'; ch[3].style.left = sp + 'px';
+  const spr = Math.round(sp); sty(ch[0], 'top', (-spr - 9) + 'px'); sty(ch[1], 'top', spr + 'px'); sty(ch[2], 'left', (-spr - 9) + 'px'); sty(ch[3], 'left', spr + 'px');
   const scoped = W.scope && adsT > 0.85 && G.state === 'play';
-  hud.scope.style.display = scoped ? 'block' : 'none';
-  hud.cross.style.opacity = adsT > 0.6 ? 0 : 1;
-  drawMap();
+  sty(hud.scope, 'display', scoped ? 'block' : 'none');
+  sty(hud.cross, 'opacity', adsT > 0.6 ? '0' : '1');
+  if (hudFrame % 2 === 0) drawMap();
+  if (showFps) txt(hud.fps, `${fpsNow} FPS · calidad ${QUALITY[qPreset].label}${qMode === 'auto' ? ' (auto)' : ''} · resolución ${Math.round(renderScale * 100)}%`);
+  sty(hud.fps, 'display', showFps ? 'block' : 'none');
 }
 
 // ============================================================ input
@@ -1665,7 +1747,7 @@ $('playBtn').onclick = startGame; $('againBtn').onclick = startGame; $('resumeBt
 $('pauseOv').addEventListener('click', (e) => { if (e.target.id !== 'resumeBtn') resume(); });
 
 // ============================================================ shooting
-const raycaster = new THREE.Raycaster(); raycaster.far = 400;
+const raycaster = new THREE.Raycaster(); raycaster.far = 400; raycaster.firstHitOnly = true;
 function currentSpread() {
   const W = WEAPONS[cur];
   const mv = Math.hypot(player.vel.x, player.vel.z);
@@ -1789,7 +1871,7 @@ function updatePlayer(dt) {
 }
 
 // ============================================================ render (post-processing)
-const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio(), { type: THREE.HalfFloatType, samples: 4 }));
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio(), { type: THREE.HalfFloatType, samples: QUALITY[qPreset].samples }));
 composer.setPixelRatio(renderer.getPixelRatio());
 const scenePass = new RenderPass(scene, camera);
 const gunPass = new RenderPass(gunScene, gunCam); gunPass.clear = false; gunPass.clearDepth = true;
@@ -1809,11 +1891,62 @@ const grade = new ShaderPass({
 });
 composer.addPass(scenePass); composer.addPass(gunPass); composer.addPass(bloom); composer.addPass(new OutputPass()); composer.addPass(grade);
 
+function applyScale() {
+  renderer.setPixelRatio(BASE_DPR * renderScale); composer.setPixelRatio(BASE_DPR * renderScale); composer.setSize(innerWidth, innerHeight);
+}
+function applyQuality(preset) {
+  qPreset = preset; const Q = QUALITY[preset];
+  renderScale = Math.min(renderScale, Q.maxScale); renderScale = Math.max(renderScale, Q.minScale);
+  for (const rt of [composer.renderTarget1, composer.renderTarget2]) { if (rt.samples !== Q.samples) { rt.samples = Q.samples; rt.dispose(); } }
+  bloom.enabled = Q.bloom;
+  if (SUN.shadow.mapSize.x !== Q.shadow) { SUN.shadow.mapSize.set(Q.shadow, Q.shadow); SUN.shadow.map?.dispose(); SUN.shadow.map = null; }
+  const c = SUN.shadow.camera; c.left = c.bottom = -Q.range; c.right = c.top = Q.range; c.updateProjectionMatrix();
+  for (const m of FOLIAGE) { m.alphaToCoverage = Q.samples > 0; m.needsUpdate = true; }
+  applyScale();
+}
+applyQuality(qPreset);
+// keep shadows sharp around the player: the shadow box follows the camera, snapped to texels to avoid shimmering
+const sunRight = new V3().crossVectors(SUN_DIR, new V3(0, 1, 0)).normalize(), sunUp = new V3().crossVectors(sunRight, SUN_DIR).normalize();
+function updateSun() {
+  const Q = QUALITY[qPreset], texel = 2 * Q.range / Q.shadow, c = camera.position;
+  const fwd = new V3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw));
+  const p = G.state === 'menu' ? new V3(-8, 0, -4) : new V3(c.x, 0, c.z).addScaledVector(fwd, Q.range * 0.4);
+  const a = Math.round(p.dot(sunRight) / texel) * texel, b = Math.round(p.dot(sunUp) / texel) * texel, d = p.dot(SUN_DIR);
+  SUN.target.position.copy(sunRight).multiplyScalar(a).addScaledVector(sunUp, b).addScaledVector(SUN_DIR, d);
+  SUN.position.copy(SUN.target.position).addScaledVector(SUN_DIR, 150);
+  SUN.target.updateMatrixWorld();
+}
+// adaptive resolution: measure real frame rate and nudge the render scale
+let fpsFrames = 0, fpsTime = 0, fpsNow = 60, lastDown = 0, slowSecs = 0, showFps = false, perfClock = performance.now();
+function adaptQuality(realDt) {
+  fpsFrames++; fpsTime += realDt;
+  if (fpsTime < 1.5) return;
+  fpsNow = Math.round(fpsFrames / fpsTime); fpsFrames = 0; fpsTime = 0;
+  if (document.hidden || G.state === 'pause') return;
+  const Q = QUALITY[qPreset], now = performance.now();
+  if (fpsNow < 50 && renderScale > Q.minScale + 0.001) { renderScale = Math.max(Q.minScale, renderScale - 0.1); lastDown = now; applyScale(); }
+  else if (fpsNow > 58 && renderScale < Q.maxScale - 0.001 && now - lastDown > 6000) { renderScale = Math.min(Q.maxScale, renderScale + 0.05); applyScale(); }
+  // in auto mode step down a preset if even the lowest scale is not enough
+  if (qMode === 'auto' && fpsNow < 42 && renderScale <= Q.minScale + 0.001) { slowSecs += 1.5; if (slowSecs >= 4.5 && qPreset !== 'baja') { slowSecs = 0; applyQuality(qPreset === 'alta' ? 'media' : 'baja'); } }
+  else slowSecs = 0;
+}
+addEventListener('keydown', (e) => { if (e.code === 'KeyF') showFps = !showFps; });
+const qSel = $('quality');
+if (qSel) {
+  qSel.value = qMode;
+  qSel.addEventListener('change', () => {
+    qMode = qSel.value; try { localStorage.setItem('plaza-quality', qMode); } catch (e) { }
+    renderScale = QUALITY[qMode === 'auto' ? 'alta' : qMode].maxScale; applyQuality(qMode === 'auto' ? 'alta' : qMode);
+  });
+}
+
 const clock = new THREE.Clock();
 let menuT = 0;
 function frame() {
   requestAnimationFrame(frame);
+  const now = performance.now(), realDt = (now - perfClock) / 1000; perfClock = now;
   const dt = Math.min(clock.getDelta(), 0.05);
+  adaptQuality(realDt);
   if (G.state === 'play') {
     updatePlayer(dt);
     for (let i = enemies.length - 1; i >= 0; i--) enemies[i]?.update(dt);
@@ -1827,13 +1960,26 @@ function frame() {
   updateHUD(dt);
   gunPass.enabled = G.state === 'play' || G.state === 'pause';
   grade.uniforms.uTime.value = (grade.uniforms.uTime.value + dt) % 100;
+  updateSun();
   composer.render(dt);
 }
 addEventListener('resize', () => {
-  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+  renderer.setSize(innerWidth, innerHeight); applyScale();
   camera.aspect = gunCam.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); gunCam.updateProjectionMatrix();
 });
 WEAPONS[cur].g.visible = true; WEAPONS[cur].g.position.copy(WEAPONS[cur].hipV);
+// warm up: compile every shader now (soldier, pickups, effects, all weapons) so the first fight doesn't stutter
+{
+  loadEl.textContent = 'Preparando gráficos…';
+  const warm = [SOLDIER.ok ? makeGlbSoldier() : makeBoxSoldier()];
+  spawnPickup('med', new V3(0, -50, 0)); spawnPickup('ammo', new V3(0, -50, 0));
+  warm[0].position.set(0, -50, 0); scene.add(warm[0]);
+  spawnDecal(new V3(0, -50, 0), new V3(0, 1, 0)); spawnPuff(new V3(0, -50, 0), 0xbfb29a, 1); spawnTracer(new V3(0, -50, 0), new V3(1, -50, 0)); spawnShell(false);
+  for (const W of WEAPONS) { W.g.visible = true; W.flash.visible = W.flash2.visible = true; }
+  renderer.compile(scene, camera); renderer.compile(gunScene, gunCam);
+  for (const W of WEAPONS) { W.g.visible = false; W.flash.visible = W.flash2.visible = false; }
+  scene.remove(warm[0]); for (const p of pickups) scene.remove(p.g); pickups.length = 0;
+}
 frame();
 $('playBtn').disabled = false; $('playBtn').textContent = 'JUGAR'; $('loading').textContent = 'Sobrevive a las oleadas. Los enemigos dejan botiquines y munición.';
 // debug hook: run game logic without rendering (used for automated tests)

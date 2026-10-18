@@ -26,6 +26,7 @@ python3 -m http.server 8000
 | R | Recargar |
 | 1 – 5 / rueda | Cambiar arma |
 | O | Invencibilidad (activar / desactivar) |
+| F | Mostrar FPS y calidad |
 | Esc | Pausa |
 
 Sobrevive a oleadas de enemigos cada vez más numerosos y precisos. Usa los coches, los troncos y
@@ -47,6 +48,8 @@ los edificios como cobertura. Los enemigos dejan botiquines y munición al caer.
 - Soldado animado: modelo `Soldier.glb` de los ejemplos de [three.js](https://github.com/mrdoob/three.js).
 
 ## Detalles técnicos
+
+- Rendimiento: los objetos estáticos se fusionan en pocas llamadas de dibujo, las sombras siguen al jugador, los disparos usan un BVH (three-mesh-bvh) y la resolución se ajusta sola para mantener unos 60 FPS. En el menú se puede elegir calidad Automática, Alta, Media o Baja.
 
 - Un único archivo `index.html`, sin dependencias que instalar (Three.js 0.160 desde unpkg).
 - Texturas fotográficas PBR con relieve (normal maps) y rugosidad; iluminación con un cielo HDRI real; los cristales y coches reflejan el cielo.
