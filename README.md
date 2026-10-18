@@ -37,8 +37,8 @@ los edificios como cobertura. Los enemigos dejan botiquines y munición al caer.
 | Tecla | Arma | Notas |
 |---|---|---|
 | 1 | Pistola 9 mm | Semiautomática, rápida de recargar |
-| 2 | Subfusil MP5 | Mucha cadencia, poco daño por bala |
-| 3 | Fusil de asalto | Equilibrado, mira holográfica |
+| 2 | Subfusil P90 | Mucha cadencia, poco daño por bala |
+| 3 | Fusil de asalto (AK-47) | Equilibrado |
 | 4 | Escopeta | 9 perdigones, devastadora de cerca, recarga cartucho a cartucho |
 | 5 | Francotirador | Mira telescópica (clic derecho), mata de un tiro a la cabeza |
 
@@ -49,6 +49,9 @@ los edificios como cobertura. Los enemigos dejan botiquines y munición al caer.
 
 - Cielo HDRI y texturas PBR (asfalto, hormigón, tierra, corteza, enlucido, caucho): [Poly Haven](https://polyhaven.com), licencia CC0.
 - Soldado animado: modelo `Soldier.glb` de los ejemplos de [three.js](https://github.com/mrdoob/three.js).
+- Pistola, fusil de cerrojo (francotirador), mesas y sillas de terraza, banco urbano, botiquín y caja de munición: [Poly Haven](https://polyhaven.com) (CC0).
+- AK-47 texturizado: «AK trio pack» de mightydinosaurcol en [OpenGameArt](https://opengameart.org/content/ak-trio-pack) (CC-BY 3.0).
+- P90 y escopeta: «Low poly animated guns» de Quaternius en [OpenGameArt](https://opengameart.org/content/low-poly-animated-guns) (CC0).
 
 ## Detalles técnicos
 
