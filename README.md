@@ -2,7 +2,7 @@
 
 Shooter en primera persona hecho con Three.js que recrea la **Plaza Marqués Llanera** (Xirivella, Valencia):
 la pista de fútbol sala "La Losa" (con valla solo en el lado de Carrer les Oliveres y canastas), el parque de pinos
-con la zona infantil y la mesa de ping-pong, la explanada de cemento y la fachada con bares (Bar Las Morenas),
+con la zona infantil y la mesa de ping-pong, la explanada de cemento y la fachada con sus dos bares (Bar Restaurante Las Morenas y Bar Hermanas Penella),
 los coches aparcados y las naves industriales de **Carrer les Oliveres**, **Carrer les Moreres** y **Carrer els Garrofers**.
 
 ## Cómo jugar

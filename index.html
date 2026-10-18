@@ -309,6 +309,7 @@ function shopTex(names) {
       g.fillStyle = gr; g.fillRect(x + 18, 34, 150, h - 42);
       g.strokeStyle = 'rgba(30,30,30,.35)'; for (let y = 36; y < h - 8; y += 4) { g.beginPath(); g.moveTo(x + 18, y); g.lineTo(x + 168, y); g.stroke(); }
       if (rnd() < 0.5) { g.fillStyle = 'rgba(30,30,30,.55)'; g.font = 'bold 20px sans-serif'; g.fillText(['XV', 'ZONA', 'K', '♥'][(rnd() * 4) | 0], x + 60 + rnd() * 50, 80 + rnd() * 30); }
+      if (!names[s]) { g.fillStyle = '#3b2f26'; g.fillRect(x + 186, 34, 52, h - 42); continue; }
       g.fillStyle = ['#1f5f9e', '#b5352b', '#2f7a3b', '#d39a1e'][(rnd() * 4) | 0]; g.fillRect(x + 14, 8, 158, 22);
       g.fillStyle = '#fff'; let fs = 17; g.font = `bold ${fs}px sans-serif`; while (g.measureText(names[s]).width > 150 && fs > 9) { fs--; g.font = `bold ${fs}px sans-serif`; } g.textAlign = 'center'; g.fillText(names[s], x + 93, 25); g.textAlign = 'left';
       g.fillStyle = '#3b2f26'; g.fillRect(x + 186, 34, 52, h - 42);
@@ -319,8 +320,7 @@ function shopTex(names) {
 T.shopA = shopTex(['BAR LA PLAÇA', 'FARMÀCIA']);
 T.shopB = shopTex(['ALIMENTACIÓ', 'PERRUQUERIA']);
 T.shopC = shopTex(['FORN DE PA', 'ESTANC']);
-T.shopBars1 = shopTex(['BAR LAS MORENAS', 'CAFÈ-BAR']);
-T.shopBars2 = shopTex(['BAR TAPES', 'CERVESERIA']);
+T.shopRes = shopTex(['', '']);
 T.warehouse = makeTex(256, 256, (g, w, h) => {
   g.fillStyle = '#b9bdc0'; g.fillRect(0, 0, w, h);
   for (let x = 0; x < w; x += 8) { g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x, 0, 2, h); g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(x + 3, 0, 1, h); }
@@ -390,6 +390,68 @@ const M = {
   invisible: new THREE.MeshBasicMaterial({ visible: false }),
 };
 
+// storefront + awning + terrace for a bar on the north facade (facade plane at z = -46)
+function barFront(xc, line1, line2, signCol, awnCol, tables) {
+  const W = 10, FZ = -46;
+  const tex = makeTex(1024, 368, (g, w, h) => {
+    g.fillStyle = '#d9cbb4'; g.fillRect(0, 0, w, h);
+    speckle(g, w, h, 3000, ['rgba(0,0,0,.05)', 'rgba(255,255,255,.07)'], 1, 3);
+    // sign band
+    g.fillStyle = signCol; g.fillRect(20, 14, w - 40, 78);
+    g.strokeStyle = '#f3efe6'; g.lineWidth = 4; g.strokeRect(28, 22, w - 56, 62);
+    g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = 'bold 22px sans-serif'; g.fillText(line1, w / 2, 38);
+    let fs = 44; g.font = `bold ${fs}px Georgia, serif`; while (g.measureText(line2).width > w - 120) { fs--; g.font = `bold ${fs}px Georgia, serif`; }
+    g.fillText(line2, w / 2, 68);
+    // glass front: window, door, window
+    const frame = '#55595e';
+    const pane = (x, y, ww, hh) => { const gr = g.createLinearGradient(x, y, x + ww, y + hh); gr.addColorStop(0, '#8fa3ad'); gr.addColorStop(0.5, '#3c4a52'); gr.addColorStop(1, '#22292e'); g.fillStyle = gr; g.fillRect(x, y, ww, hh); g.fillStyle = 'rgba(255,240,200,.18)'; g.fillRect(x + 8, y + hh * 0.55, ww - 16, hh * 0.35); g.strokeStyle = frame; g.lineWidth = 8; g.strokeRect(x, y, ww, hh); };
+    pane(60, 150, 340, 196); pane(440, 140, 144, 220); pane(624, 150, 340, 196);
+    g.fillStyle = frame; g.fillRect(500, 230, 6, 30); g.fillRect(518, 230, 6, 30);
+    // vinyl lettering on the windows
+    g.fillStyle = 'rgba(255,255,255,.85)'; g.font = 'bold 26px sans-serif';
+    g.fillText('TAPAS · ALMUERZOS', 230, 290); g.fillText('MENÚ DEL DÍA', 794, 290);
+    g.fillStyle = '#9a8f80'; g.fillRect(0, h - 8, w, 8);
+  });
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(W, 3.6), std({ map: tex }));
+  front.position.set(xc, 1.8, FZ + 0.02); addMesh(front, { cast: false });
+  // awning
+  const aw = makeTex(256, 64, (g, w, h) => { for (let i = 0; i < 16; i++) { g.fillStyle = i % 2 ? '#f2eee6' : awnCol; g.fillRect(i * 16, 0, 16, h); } });
+  const awning = new THREE.Mesh(new THREE.BoxGeometry(W, 0.04, 1.7), std({ map: aw, roughness: 0.8 }));
+  awning.position.set(xc, 2.62, FZ + 0.8); awning.rotation.x = 0.28; addMesh(awning, { shoot: false });
+  const val = new THREE.Mesh(new THREE.BoxGeometry(W, 0.25, 0.02), std({ map: aw })); val.position.set(xc, 2.28, FZ + 1.62); addMesh(val, { shoot: false });
+  // projecting light-box sign
+  const lb = makeTex(256, 128, (g, w, h) => { g.fillStyle = signCol; g.fillRect(0, 0, w, h); g.fillStyle = '#fff'; g.font = 'bold 64px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('BAR', w / 2, h / 2 + 4); });
+  const box_ = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.6, 1.1), [std({ map: lb, emissive: 0x222222 }), std({ map: lb, emissive: 0x222222 }), M.white, M.white, M.white, M.white]);
+  box_.position.set(xc + W / 2 - 0.4, 3.9, FZ + 0.6); addMesh(box_);
+  // terrace: tables, chairs, parasols
+  const alu = std({ color: 0xb8bcc0, metalness: 0.6, roughness: 0.4, env: 1 });
+  const chairMat = std({ color: 0x2d2f33, roughness: 0.6 });
+  const par = std({ color: 0xece6d6, roughness: 0.8, side: THREE.DoubleSide });
+  for (let i = 0; i < tables; i++) {
+    const tx = xc - (tables - 1) * 1.6 + i * 3.2, tz = FZ + 3.2;
+    const top = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.03, 16), alu); top.position.set(tx, 0.92, tz);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.75, 6), alu); leg.position.set(tx, 0.53, tz);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.03, 12), alu); base.position.set(tx, 0.17, tz);
+    for (const o of [top, leg, base]) addMesh(o);
+    for (let c = 0; c < 4; c++) {
+      const a = c * Math.PI / 2 + 0.3, cx = tx + Math.cos(a) * 0.65, cz = tz + Math.sin(a) * 0.65;
+      const ch = new THREE.Group();
+      const seat = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, 0.42), chairMat); seat.position.y = 0.45;
+      const back = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.04), chairMat); back.position.set(0, 0.68, 0.2);
+      ch.add(seat, back);
+      for (const [lx, lz] of [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]]) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.45, 4), alu); l.position.set(lx, 0.225, lz); ch.add(l); }
+      ch.position.set(cx, 0.15, cz); ch.rotation.y = -a + Math.PI / 2 * 3; ch.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(ch);
+    }
+    addCol(tx - 0.4, tx + 0.4, tz - 0.4, tz + 0.4, 0, 0.95, { sight: false, nav: true });
+    if (i % 2 === 0) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 2.4, 6), alu); pole.position.set(tx, 1.35, tz);
+      const um = new THREE.Mesh(new THREE.ConeGeometry(1.4, 0.45, 8, 1, true), par); um.position.set(tx, 2.55, tz);
+      addMesh(pole); addMesh(um, { shoot: false });
+    }
+  }
+}
+
 // ============================================================ LEVEL
 // Axes: x east, z south. Carrer les Oliveres runs along z at x≈-48, Carrer les Moreres at x≈32,
 // Carrer els Garrofers along x at z≈35. Plaza (court + park) sits between them.
@@ -422,7 +484,7 @@ const M = {
     addCol(x0, x1, z0, z1, 0, h, { sight: false, nav: false });
   };
   // plaza block
-  slab(T.tiles, -40, -48, 24, 27.6, 0.15, 3);
+  slab(T.tiles, -40, -46, 24, 27.6, 0.15, 3);
   // sidewalks
   slab(T.concrete, -57, -160, -52, 160, 0.15, 2);       // Oliveres west
   slab(T.concrete, 36, -160, 40, 31, 0.15, 2);          // Moreres east
@@ -499,7 +561,7 @@ const M = {
   // park: dirt ground, playground, ping-pong
   flat(T.dirt, -9, -16, 19, 21, 0.17, 4, { layer: 2 });
   // cement esplanade between the park and the bar building
-  flat(T.concrete, -9, -42, 24, -16.5, 0.17, 4, { layer: 2 });
+  flat(T.concrete, -9, -38.5, 24, -16.5, 0.17, 4, { layer: 2 });
   flat(T.rubber, -8, -12, -1.5, 6, 0.19, 2, { layer: 3, rough: 0.8 });
   flat(T.concrete, 2.5, -13, 9.5, -5, 0.19, 3, { layer: 3 });
   // low border around dirt
@@ -556,10 +618,11 @@ const M = {
     addCol(x0, x1, z0, z1, 0, H + 0.6);
   };
   // the only residential facade: north end of the plaza, bars on the ground floor
-  building(-40, -64, -8, -50, 5, T.facadeA, T.shopBars1);
-  building(-8, -64, 24, -50, 5, T.facadeA, T.shopBars2);
-  building(-75, -90, -57, -44, 5, T.facadeA, T.shopB);
-  building(37, -90, 60, -50, 4, T.facadeC, T.shopC);
+  building(-40, -60, -8, -46, 5, T.facadeA, T.shopRes);
+  building(-8, -60, 24, -46, 5, T.facadeA, T.shopRes);
+  // the two real bars of the building (positions from OpenStreetMap)
+  barFront(-28.5, 'BAR RESTAURANTE', 'LAS MORENAS', '#a3241c', '#c8392c', 3);
+  barFront(18.5, 'BAR', 'HERMANAS PENELLA', '#1e5a3a', '#2f7a4f', 2);
   // warehouses (east of Moreres, south of Garrofers)
   const warehouse = (x0, z0, x1, z1, h) => {
     const w = x1 - x0, d = z1 - z0;
@@ -575,6 +638,8 @@ const M = {
   warehouse(-95, -38, -58, -6, 9);
   warehouse(-95, -2, -58, 29, 10);
   warehouse(-110, 44, -58, 85, 9);
+  warehouse(-95, -90, -58, -44, 9);
+  warehouse(37, -90, 70, -50, 9);
   warehouse(-54, 44, -18, 80, 8);
   // solar panels on the Moreres warehouse roof (as in the aerial view)
   { const pm = new THREE.MeshStandardMaterial({ color: 0x1c2a44, metalness: 0.6, roughness: 0.25, envMapIntensity: 1 });
@@ -640,7 +705,7 @@ function tree(x, z, s = 1, kind = 'pine', baseY = 0.17) {
   // strip between court and park
   for (let z = -24; z <= 22; z += 7.5) tree(-10.5 + R(-0.4, 0.4), z + R(-1, 1), R(0.8, 1.05), rnd() < 0.6 ? 'pine' : 'leafy');
   // north plaza
-  for (let x = -37; x <= 22; x += 6.5) tree(x + R(-0.5, 0.5), -45 + R(-0.4, 0.4), R(0.85, 1.1), rnd() < 0.6 ? 'pine' : 'leafy');
+  for (let x = -37; x <= 22; x += 6.5) if (Math.abs(x + 28.5) > 4 && Math.abs(x - 18.5) > 3.5) tree(x + R(-0.3, 0.3), -40 + R(-0.3, 0.3), R(0.85, 1.1), rnd() < 0.6 ? 'pine' : 'leafy');
   for (const [x, z] of [[-30, -35], [-18, -38]]) tree(x, z, R(0.9, 1.1), 'pine');
   // along Oliveres sidewalk (orange-tree style small leafy)
   for (let z = -42; z < 100; z += 9) if (Math.abs(z - 35) > 6) tree(-54.5, z, R(0.6, 0.75), 'leafy', 0.15);
@@ -663,14 +728,14 @@ function bench(x, z, rot) {
   addCol(x - (sw ? 0.3 : 0.95), x + (sw ? 0.3 : 0.95), z - (sw ? 0.95 : 0.3), z + (sw ? 0.95 : 0.3), 0, 0.5, { sight: false, nav: false });
 }
 for (let z = -20; z <= 16; z += 6) bench(-8.3, z, -Math.PI / 2);
-for (const [x, z, r] of [[0, 20.3, Math.PI], [8, 20.3, Math.PI], [20.3, -10, Math.PI / 2], [20.3, 6, Math.PI / 2], [4, -17.3, 0], [12, -17.3, 0], [-20, -32, 0], [0, -40, 0], [12, -40, 0]]) bench(x, z, r);
+for (const [x, z, r] of [[0, 20.3, Math.PI], [8, 20.3, Math.PI], [20.3, -10, Math.PI / 2], [20.3, 6, Math.PI / 2], [4, -17.3, 0], [12, -17.3, 0], [-20, -32, 0], [0, -37.5, 0], [10, -37.5, 0]]) bench(x, z, r);
 function lamp(x, z) {
   const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 8, 8), M.metal); p.position.set(x, 4.15, z); p.castShadow = true; scene.add(p);
   const a = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1.2), M.metal); a.position.set(x, 8.1, z + 0.5); scene.add(a);
   const h = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.6), M.dark); h.position.set(x, 8.05, z + 1.1); h.castShadow = true; scene.add(h);
   shootables.push(p); addCol(x - 0.12, x + 0.12, z - 0.12, z + 0.12, 0, 8, { sight: false });
 }
-for (const [x, z] of [[-11, -28], [-11, 25], [20, -24], [20, 23], [-38, -40], [22, -42], [6, -30], [-25, 26], [5, 23], [-55, -40], [-55, 10], [38, -20], [38, 20], [-30, 42], [10, 42]]) lamp(x, z);
+for (const [x, z] of [[-11, -28], [-11, 25], [20, -24], [20, 23], [-38, -38], [22, -38], [6, -30], [-25, 26], [5, 23], [-55, -40], [-55, 10], [38, -20], [38, 20], [-30, 42], [10, 42]]) lamp(x, z);
 for (const [x, z] of [[-9.5, -1], [19.5, 15], [2, -21.5], [-39, 26]]) {
   const b = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.22, 0.85, 12), std({ color: 0x3f6d3f })); b.position.set(x, 0.6, z); b.castShadow = true; scene.add(b); shootables.push(b);
   addCol(x - 0.25, x + 0.25, z - 0.25, z + 0.25, 0, 1.0, { sight: false });
@@ -1149,7 +1214,7 @@ function updatePickups(dt) {
 
 // ============================================================ game state
 const G = { state: 'menu', wave: 0, toSpawn: 0, alive: 0, kills: 0, score: 0, spawnCd: 0, interT: 0, locked: false, everLocked: false, time: 0 };
-const SPAWNS = [[-48.5, -52], [-48.5, -20], [-48.5, 12], [-48.5, 34], [32.5, -52], [32.5, -18], [32.5, 14], [32.5, 34], [0, 35.5], [-25, 35.5], [15, 35.5], [-48.5, -40], [32.5, -40]];
+const SPAWNS = [[-48.5, -52], [-48.5, -20], [-48.5, 12], [-48.5, 34], [32.5, -52], [32.5, -18], [32.5, 14], [32.5, 34], [0, 35.5], [-25, 35.5], [15, 35.5], [-48.5, -42], [32.5, -42]];
 function startWave() {
   G.wave++; G.toSpawn = 3 + G.wave * 2; G.spawnCd = 1.5;
   banner('OLEADA ' + G.wave, G.toSpawn + ' enemigos se acercan', 2.4);
@@ -1197,7 +1262,9 @@ function streetName() {
   if (x >= -37 && x <= -12 && z >= -27 && z <= 23) return 'Pista de fútbol La Losa';
   if (x >= -8 && x <= -1.5 && z >= -12 && z <= 6) return 'Parque infantil';
   if (x >= 2.5 && x <= 9.5 && z >= -13 && z <= -5) return 'Mesa de ping-pong';
-  if (z < -42) return 'Bares · Pl. Marqués Llanera';
+  if (z < -40 && x > -36 && x < -21) return 'Bar Restaurante Las Morenas';
+  if (z < -40 && x > 12 && x < 25) return 'Bar Hermanas Penella';
+  if (z < -38.5 && x > -40 && x < 24) return 'Pl. Marqués de Llanera';
   if (x > -9 && z < -16) return 'Explanada';
   return 'Plaza Marqués Llanera';
 }
@@ -1210,10 +1277,10 @@ const mapBg = document.createElement('canvas'); mapBg.width = 180; mapBg.height 
   const rect = (x0, z0, x1, z1, c) => { g.fillStyle = c; g.fillRect((x0 - MAP.x0) * S, (z0 - MAP.z0) * S, (x1 - x0) * S, (z1 - z0) * S); };
   rect(-200, -200, 200, 200, '#e8e4dc');
   rect(-53, -200, -44, 200, '#ffffff'); rect(28.5, -200, 37, 200, '#ffffff'); rect(-200, 31.5, 200, 39.5, '#ffffff'); rect(-200, -58, 200, -54, '#ffffff');
-  rect(-40, -48, 24, 27.6, '#d9d0bf');
-  rect(-37, -27, -13, 23, '#b9cdb2'); rect(-9, -42, 24, -16.5, '#cbcac5'); rect(-9, -16, 19, 21, '#c9e0b8'); rect(-8, -12, -1.5, 6, '#3aa58a'); rect(2.5, -13, 9.5, -5, '#bdbdbd');
-  rect(-40, -64, 24, -50, '#e3c9a8'); rect(-75, -90, -57, -44, '#e3c9a8');
-  rect(-95, -38, -58, 29, '#cfd3d6'); rect(-110, 44, -18, 85, '#cfd3d6'); rect(46, -46, 110, 26, '#cfd3d6'); rect(-14, 46, 110, 90, '#cfd3d6');
+  rect(-40, -46, 24, 27.6, '#d9d0bf');
+  rect(-37, -27, -13, 23, '#b9cdb2'); rect(-9, -38.5, 24, -16.5, '#cbcac5'); rect(-9, -16, 19, 21, '#c9e0b8'); rect(-8, -12, -1.5, 6, '#3aa58a'); rect(2.5, -13, 9.5, -5, '#bdbdbd');
+  rect(-40, -60, 24, -46, '#e3c9a8');
+  rect(-95, -90, -58, 29, '#cfd3d6'); rect(37, -90, 70, -50, '#cfd3d6'); rect(-110, 44, -18, 85, '#cfd3d6'); rect(46, -46, 110, 26, '#cfd3d6'); rect(-14, 46, 110, 90, '#cfd3d6');
   g.strokeStyle = '#7fb3e8'; g.lineWidth = 2;
   for (const [x0, z0, x1, z1] of [[-48.5, -200, -48.5, 200], [32.5, -200, 32.5, 200], [-200, 35.5, 200, 35.5]]) { g.beginPath(); g.moveTo((x0 - MAP.x0) * S, (z0 - MAP.z0) * S); g.lineTo((x1 - MAP.x0) * S, (z1 - MAP.z0) * S); g.stroke(); }
 }
