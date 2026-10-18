@@ -310,7 +310,7 @@ function shopTex(names) {
       g.strokeStyle = 'rgba(30,30,30,.35)'; for (let y = 36; y < h - 8; y += 4) { g.beginPath(); g.moveTo(x + 18, y); g.lineTo(x + 168, y); g.stroke(); }
       if (rnd() < 0.5) { g.fillStyle = 'rgba(30,30,30,.55)'; g.font = 'bold 20px sans-serif'; g.fillText(['XV', 'ZONA', 'K', '♥'][(rnd() * 4) | 0], x + 60 + rnd() * 50, 80 + rnd() * 30); }
       g.fillStyle = ['#1f5f9e', '#b5352b', '#2f7a3b', '#d39a1e'][(rnd() * 4) | 0]; g.fillRect(x + 14, 8, 158, 22);
-      g.fillStyle = '#fff'; g.font = 'bold 17px sans-serif'; g.textAlign = 'center'; g.fillText(names[s], x + 93, 25); g.textAlign = 'left';
+      g.fillStyle = '#fff'; let fs = 17; g.font = `bold ${fs}px sans-serif`; while (g.measureText(names[s]).width > 150 && fs > 9) { fs--; g.font = `bold ${fs}px sans-serif`; } g.textAlign = 'center'; g.fillText(names[s], x + 93, 25); g.textAlign = 'left';
       g.fillStyle = '#3b2f26'; g.fillRect(x + 186, 34, 52, h - 42);
       g.fillStyle = 'rgba(120,150,170,.55)'; g.fillRect(x + 192, 40, 40, 40);
     }
@@ -319,6 +319,8 @@ function shopTex(names) {
 T.shopA = shopTex(['BAR LA PLAÇA', 'FARMÀCIA']);
 T.shopB = shopTex(['ALIMENTACIÓ', 'PERRUQUERIA']);
 T.shopC = shopTex(['FORN DE PA', 'ESTANC']);
+T.shopBars1 = shopTex(['BAR LAS MORENAS', 'CAFÈ-BAR']);
+T.shopBars2 = shopTex(['BAR TAPES', 'CERVESERIA']);
 T.warehouse = makeTex(256, 256, (g, w, h) => {
   g.fillStyle = '#b9bdc0'; g.fillRect(0, 0, w, h);
   for (let x = 0; x < w; x += 8) { g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(x, 0, 2, h); g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(x + 3, 0, 1, h); }
@@ -420,12 +422,11 @@ const M = {
     addCol(x0, x1, z0, z1, 0, h, { sight: false, nav: false });
   };
   // plaza block
-  slab(T.tiles, -40, -54, 24, 27.6, 0.15, 3);
+  slab(T.tiles, -40, -48, 24, 27.6, 0.15, 3);
   // sidewalks
   slab(T.concrete, -57, -160, -52, 160, 0.15, 2);       // Oliveres west
   slab(T.concrete, 36, -160, 40, 31, 0.15, 2);          // Moreres east
   slab(T.concrete, -160, 39, 160, 43, 0.15, 2);         // Garrofers south
-  slab(T.concrete, -40, -60, 24, -58, 0.15, 2);         // north street sidewalk
 
   // futsal court
   flat(T.court, -37, -27, -13, 23, 0.17, 0, { layer: 2, rough: 0.9 }).material.map.repeat.set(1, 1);
@@ -454,10 +455,16 @@ const M = {
     addCol(Math.min(x0, x1) - t, Math.max(x0, x1) + t, Math.min(z0, z1) - t, Math.max(z0, z1) + t, 0, FH + 0.2, { sight: false, nav: true });
   };
   const cx0 = -37, cx1 = -13, cz0 = -27, cz1 = 23;
-  fenceRun(cx0, cz0, cx1, cz0);                 // north
-  fenceRun(cx0, cz1, -27, cz1); fenceRun(-24, cz1, cx1, cz1); // south with door
-  fenceRun(cx0, cz0, cx0, -4); fenceRun(cx0, -1, cx0, cz1);   // west with door
-  fenceRun(cx1, cz0, cx1, -14); fenceRun(cx1, -11, cx1, 6); fenceRun(cx1, 9, cx1, cz1); // east with 2 doors
+  // only the long side facing Carrer les Oliveres has a tall fence; the rest of the court is open
+  fenceRun(cx0, cz0, cx0, cz1);
+  // low green railing between the court and the park, with gaps to walk through
+  for (const [z0, z1] of [[-26, -15], [-12, 0], [3, 13], [16, 23]]) {
+    const L = z1 - z0, zc = (z0 + z1) / 2;
+    const top = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, L), M.green); top.position.set(-12, 1.05, zc); top.castShadow = true; scene.add(top);
+    const mid = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, L), M.green); mid.position.set(-12, 0.6, zc); scene.add(mid);
+    for (let z = z0; z <= z1 + 0.01; z += 1.5) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.9, 0.05), M.green); p.position.set(-12, 0.6, Math.min(z, z1)); p.castShadow = true; scene.add(p); }
+    addCol(-12.08, -11.92, z0, z1, 0, 1.1, { sight: false, nav: true });
+  }
 
   // futsal goals
   const goal = (z, dir) => {
@@ -490,11 +497,13 @@ const M = {
   hoop(-12); hoop(8);
 
   // park: dirt ground, playground, ping-pong
-  flat(T.dirt, -9, -21, 19, 19, 0.17, 4, { layer: 2 });
-  flat(T.rubber, -7, -17, -1, 0, 0.19, 2, { layer: 3, rough: 0.8 });
+  flat(T.dirt, -9, -16, 19, 21, 0.17, 4, { layer: 2 });
+  // cement esplanade between the park and the bar building
+  flat(T.concrete, -9, -42, 24, -16.5, 0.17, 4, { layer: 2 });
+  flat(T.rubber, -8, -12, -1.5, 6, 0.19, 2, { layer: 3, rough: 0.8 });
   flat(T.concrete, 2.5, -13, 9.5, -5, 0.19, 3, { layer: 3 });
   // low border around dirt
-  for (const [x0, z0, x1, z1] of [[-9.1, -21.1, 19.1, -20.9], [-9.1, 18.9, 19.1, 19.1], [-9.1, -21, -8.9, 19], [18.9, -21, 19.1, 19]]) {
+  for (const [x0, z0, x1, z1] of [[-9.1, -16.1, 19.1, -15.9], [-9.1, 20.9, 19.1, 21.1], [-9.1, -16, -8.9, 21], [18.9, -16, 19.1, 21]]) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.12, z1 - z0), M.curb); m.position.set((x0 + x1) / 2, 0.21, (z0 + z1) / 2); m.receiveShadow = true; scene.add(m);
   }
   // ping-pong table (concrete base, blue top)
@@ -506,22 +515,22 @@ const M = {
   // playground: slide + swings + spring rider
   {
     const blue = std({ color: 0x2a6fd1, roughness: 0.5 }), red = std({ color: 0xc8392c, roughness: 0.5 }), yel = std({ color: 0xe9b42a, roughness: 0.5 });
-    box(1.6, 1.5, 1.6, red, -4, 0.19, -12, { sight: true });
+    box(1.6, 1.5, 1.6, red, -4.5, 0.19, -8, { sight: true });
     for (const [dx, dz] of [[-0.75, -0.75], [0.75, -0.75], [-0.75, 0.75], [0.75, 0.75]]) {
-      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.8, 8), yel); p.position.set(-4 + dx, 0.19 + 1.4, -12 + dz); p.castShadow = true; scene.add(p);
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.8, 8), yel); p.position.set(-4.5 + dx, 0.19 + 1.4, -8 + dz); p.castShadow = true; scene.add(p);
     }
-    const roofm = new THREE.Mesh(new THREE.ConeGeometry(1.35, 0.9, 4), blue); roofm.rotation.y = Math.PI / 4; roofm.position.set(-4, 0.19 + 3.2, -12); roofm.castShadow = true; scene.add(roofm);
-    const slide = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.08, 3.4), blue); slide.position.set(-4, 0.19 + 0.85, -9.6); slide.rotation.x = -0.45; slide.castShadow = true; scene.add(slide); shootables.push(slide);
-    addCol(-4.35, -3.65, -11.2, -8, 0, 1.4, { sight: false });
+    const roofm = new THREE.Mesh(new THREE.ConeGeometry(1.35, 0.9, 4), blue); roofm.rotation.y = Math.PI / 4; roofm.position.set(-4.5, 0.19 + 3.2, -8); roofm.castShadow = true; scene.add(roofm);
+    const slide = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.08, 3.4), blue); slide.position.set(-4.5, 0.19 + 0.85, -5.6); slide.rotation.x = -0.45; slide.castShadow = true; scene.add(slide); shootables.push(slide);
+    addCol(-4.85, -4.15, -7.2, -4, 0, 1.4, { sight: false });
     // swings
     const sf = new THREE.Group();
     for (const x of [-6.2, -1.8]) for (const s of [-1, 1]) { const l = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2.6, 6), yel); l.position.set(x, 1.2, -4 + s * 0.5); l.rotation.x = s * 0.2; sf.add(l); }
     const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 4.4, 6), yel); bar.rotation.z = Math.PI / 2; bar.position.set(-4, 2.45, -4); sf.add(bar);
     for (const x of [-5, -3]) { for (const dx of [-0.2, 0.2]) { const ch = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 1.8, 4), M.metal); ch.position.set(x + dx, 1.5, -4); sf.add(ch); } const seat = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.22), M.dark); seat.position.set(x, 0.6, -4); sf.add(seat); }
-    sf.position.y = 0.19; sf.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(sf);
-    addCol(-6.3, -6.1, -4.6, -3.4, 0, 2.5, { sight: false }); addCol(-1.9, -1.7, -4.6, -3.4, 0, 2.5, { sight: false });
+    sf.position.set(-0.3, 0.19, 5); sf.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(sf);
+    addCol(-6.6, -6.4, 0.4, 1.6, 0, 2.5, { sight: false }); addCol(-2.2, -2.0, 0.4, 1.6, 0, 2.5, { sight: false });
     // spring riders
-    for (const [x, z, c] of [[-2.2, -15, yel], [-5.8, -15.5, red]]) {
+    for (const [x, z, c] of [[-2.6, -10.5, yel], [-6.4, -11, red]]) {
       const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.4, 8), M.metal); sp.position.set(x, 0.39, z); scene.add(sp);
       const b = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), c); b.scale.set(1.3, 0.8, 0.7); b.position.set(x, 0.8, z); b.castShadow = true; scene.add(b);
     }
@@ -546,17 +555,11 @@ const M = {
     }
     addCol(x0, x1, z0, z1, 0, H + 0.6);
   };
-  // Oliveres apartment blocks (west)
-  building(-72, -110, -57, -62, 5, T.facadeA, T.shopA);
-  building(-72, -58, -57, -12, 5, T.facadeA, T.shopB);
-  building(-72, -8, -57, 30, 5, T.facadeB, T.shopC);
-  building(-72, 44, -57, 90, 4, T.facadeC, T.shopA);
-  // north block across small street
-  building(-40, -86, -6, -62, 5, T.facadeB, T.shopB);
-  building(-2, -86, 24, -62, 4, T.facadeC, T.shopC);
-  // south of Garrofers
-  building(-110, 44, -57, 80, 5, T.facadeA, T.shopB);
-  building(-50, 44, -18, 70, 3, T.facadeC, T.shopA);
+  // the only residential facade: north end of the plaza, bars on the ground floor
+  building(-40, -64, -8, -50, 5, T.facadeA, T.shopBars1);
+  building(-8, -64, 24, -50, 5, T.facadeA, T.shopBars2);
+  building(-75, -90, -57, -44, 5, T.facadeA, T.shopB);
+  building(37, -90, 60, -50, 4, T.facadeC, T.shopC);
   // warehouses (east of Moreres, south of Garrofers)
   const warehouse = (x0, z0, x1, z1, h) => {
     const w = x1 - x0, d = z1 - z0;
@@ -565,15 +568,23 @@ const M = {
     m.position.set((x0 + x1) / 2, h / 2, (z0 + z1) / 2); addMesh(m);
     addCol(x0, x1, z0, z1, 0, h);
   };
-  warehouse(46, -100, 110, 26, 11);
+  warehouse(46, -46, 110, 26, 11);
   warehouse(-14, 46, 40, 85, 9);
   warehouse(44, 46, 110, 90, 10);
+  // industrial units across Carrer les Oliveres and Carrer els Garrofers
+  warehouse(-95, -38, -58, -6, 9);
+  warehouse(-95, -2, -58, 29, 10);
+  warehouse(-110, 44, -58, 85, 9);
+  warehouse(-54, 44, -18, 80, 8);
+  // solar panels on the Moreres warehouse roof (as in the aerial view)
+  { const pm = new THREE.MeshStandardMaterial({ color: 0x1c2a44, metalness: 0.6, roughness: 0.25, envMapIntensity: 1 });
+    for (let x = 52; x < 104; x += 4.2) for (let z = -40; z < 20; z += 2.4) { const pnl = new THREE.Mesh(new THREE.BoxGeometry(3.9, 0.05, 2.1), pm); pnl.position.set(x, 11.4, z); pnl.rotation.z = -0.18; scene.add(pnl); } }
   // white wall + fence in front of the warehouse yard
-  box(0.3, 1.1, 128, M.wall, 40.3, 0, -36, { sight: false });
-  for (let z = -100; z <= 28; z += 2.5) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.2, 6), M.green); p.position.set(40.3, 1.7, z); scene.add(p); }
-  { const fm = new THREE.MeshStandardMaterial({ map: rep(T.chain, 128 / 0.12, 1.2 / 0.12), alphaMap: rep(T.chain, 128 / 0.12, 1.2 / 0.12), alphaTest: 0.35, side: THREE.DoubleSide, color: 0x9fb5a5 });
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(128, 1.2), fm); p.rotation.y = Math.PI / 2; p.position.set(40.3, 1.7, -36); scene.add(p); }
-  flat(T.concrete, 40.5, -100, 46, 26, 0.02, 4, { layer: 1 });
+  box(0.3, 1.1, 74, M.wall, 40.3, 0, -9, { sight: false });
+  for (let z = -46; z <= 28; z += 2.5) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.2, 6), M.green); p.position.set(40.3, 1.7, z); scene.add(p); }
+  { const fm = new THREE.MeshStandardMaterial({ map: rep(T.chain, 74 / 0.12, 1.2 / 0.12), alphaMap: rep(T.chain, 74 / 0.12, 1.2 / 0.12), alphaTest: 0.35, side: THREE.DoubleSide, color: 0x9fb5a5 });
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(74, 1.2), fm); p.rotation.y = Math.PI / 2; p.position.set(40.3, 1.7, -9); scene.add(p); }
+  flat(T.concrete, 40.5, -46, 46, 26, 0.02, 4, { layer: 1 });
 }
 
 // ------------------------------------------------ trees (merged for speed)
@@ -624,14 +635,15 @@ function tree(x, z, s = 1, kind = 'pine', baseY = 0.17) {
 }
 {
   // park pines (dense, like the photos)
-  const spots = [[-6, 4], [-2, 8], [2, 3], [5, 12], [9, 6], [12, 15], [15, 9], [16, -2], [12, -6], [14, -14], [10, -18], [3, -18], [-6, 14], [0, 15], [8, -1], [17, 4], [-7, -19], [-3, -20], [13, 1]];
+  const spots = [[-3, 10], [2, 3], [5, 12], [9, 6], [12, 15], [15, 9], [16, -2], [12, -6], [14, -13], [3, 18], [-6, 14], [0, 15], [8, -1], [17, 4], [13, 1], [9, 19], [17, 18], [-6, 19], [16, -10]];
   for (const [x, z] of spots) tree(x + R(-0.8, 0.8), z + R(-0.8, 0.8), R(0.9, 1.2), 'pine');
   // strip between court and park
   for (let z = -24; z <= 22; z += 7.5) tree(-10.5 + R(-0.4, 0.4), z + R(-1, 1), R(0.8, 1.05), rnd() < 0.6 ? 'pine' : 'leafy');
   // north plaza
-  for (const [x, z] of [[-30, -42], [-18, -46], [-6, -40], [6, -46], [16, -38], [-36, -50], [12, -51]]) tree(x, z, R(0.9, 1.15), rnd() < 0.5 ? 'pine' : 'leafy');
+  for (let x = -37; x <= 22; x += 6.5) tree(x + R(-0.5, 0.5), -45 + R(-0.4, 0.4), R(0.85, 1.1), rnd() < 0.6 ? 'pine' : 'leafy');
+  for (const [x, z] of [[-30, -35], [-18, -38]]) tree(x, z, R(0.9, 1.1), 'pine');
   // along Oliveres sidewalk (orange-tree style small leafy)
-  for (let z = -100; z < 100; z += 9) if (Math.abs(z - 35) > 6) tree(-54.5, z, R(0.6, 0.75), 'leafy', 0.15);
+  for (let z = -42; z < 100; z += 9) if (Math.abs(z - 35) > 6) tree(-54.5, z, R(0.6, 0.75), 'leafy', 0.15);
   // along Garrofers south sidewalk
   for (let x = -40; x < 40; x += 10) tree(x, 41, R(0.6, 0.8), 'leafy', 0.15);
   const trunkMat = std({ color: 0x6b5543, roughness: 0.95 });
@@ -651,14 +663,14 @@ function bench(x, z, rot) {
   addCol(x - (sw ? 0.3 : 0.95), x + (sw ? 0.3 : 0.95), z - (sw ? 0.95 : 0.3), z + (sw ? 0.95 : 0.3), 0, 0.5, { sight: false, nav: false });
 }
 for (let z = -20; z <= 16; z += 6) bench(-8.3, z, -Math.PI / 2);
-for (const [x, z, r] of [[0, 20.3, Math.PI], [8, 20.3, Math.PI], [20.3, -10, Math.PI / 2], [20.3, 6, Math.PI / 2], [4, -22.3, 0], [12, -22.3, 0], [-20, -32, 0], [0, -32, 0]]) bench(x, z, r);
+for (const [x, z, r] of [[0, 20.3, Math.PI], [8, 20.3, Math.PI], [20.3, -10, Math.PI / 2], [20.3, 6, Math.PI / 2], [4, -17.3, 0], [12, -17.3, 0], [-20, -32, 0], [0, -40, 0], [12, -40, 0]]) bench(x, z, r);
 function lamp(x, z) {
   const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 8, 8), M.metal); p.position.set(x, 4.15, z); p.castShadow = true; scene.add(p);
   const a = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1.2), M.metal); a.position.set(x, 8.1, z + 0.5); scene.add(a);
   const h = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.6), M.dark); h.position.set(x, 8.05, z + 1.1); h.castShadow = true; scene.add(h);
   shootables.push(p); addCol(x - 0.12, x + 0.12, z - 0.12, z + 0.12, 0, 8, { sight: false });
 }
-for (const [x, z] of [[-11, -28], [-11, 25], [20, -24], [20, 23], [-38, -40], [22, -45], [-25, 26], [5, 23], [-55, -40], [-55, 10], [38, -20], [38, 20], [-30, 42], [10, 42]]) lamp(x, z);
+for (const [x, z] of [[-11, -28], [-11, 25], [20, -24], [20, 23], [-38, -40], [22, -42], [6, -30], [-25, 26], [5, 23], [-55, -40], [-55, 10], [38, -20], [38, 20], [-30, 42], [10, 42]]) lamp(x, z);
 for (const [x, z] of [[-9.5, -1], [19.5, 15], [2, -21.5], [-39, 26]]) {
   const b = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.22, 0.85, 12), std({ color: 0x3f6d3f })); b.position.set(x, 0.6, z); b.castShadow = true; scene.add(b); shootables.push(b);
   addCol(x - 0.25, x + 0.25, z - 0.25, z + 0.25, 0, 1.0, { sight: false });
@@ -727,7 +739,7 @@ function car(x, z, rot, type = 'car', color) {
   // white van like in the street view
   car(37.2, 22, -Math.PI / 2, 'van', 0xf3f3f1);
   // a few in the warehouse yard
-  for (const z of [-60, -40, -20, 0, 15]) car(43.5, z, Math.PI / 2);
+  for (const z of [-40, -20, 0, 15]) car(43.5, z, Math.PI / 2);
 }
 
 // ------------------------------------------------ invisible map boundary
@@ -1137,7 +1149,7 @@ function updatePickups(dt) {
 
 // ============================================================ game state
 const G = { state: 'menu', wave: 0, toSpawn: 0, alive: 0, kills: 0, score: 0, spawnCd: 0, interT: 0, locked: false, everLocked: false, time: 0 };
-const SPAWNS = [[-48.5, -52], [-48.5, -20], [-48.5, 12], [-48.5, 34], [32.5, -52], [32.5, -18], [32.5, 14], [32.5, 34], [0, 35.5], [-25, 35.5], [15, 35.5], [-20, -54.5], [10, -54.5], [-40, -54.5]];
+const SPAWNS = [[-48.5, -52], [-48.5, -20], [-48.5, 12], [-48.5, 34], [32.5, -52], [32.5, -18], [32.5, 14], [32.5, 34], [0, 35.5], [-25, 35.5], [15, 35.5], [-48.5, -40], [32.5, -40]];
 function startWave() {
   G.wave++; G.toSpawn = 3 + G.wave * 2; G.spawnCd = 1.5;
   banner('OLEADA ' + G.wave, G.toSpawn + ' enemigos se acercan', 2.4);
@@ -1182,8 +1194,11 @@ function streetName() {
   if (x < -44 && x > -53) return 'Carrer les Oliveres';
   if (x > 29) return 'Carrer les Moreres';
   if (z > 31) return 'Carrer els Garrofers';
-  if (x >= -37 && x <= -13 && z >= -27 && z <= 23) return 'Pista de fútbol La Losa';
-  if (z < -35) return 'Pl. Marqués Llanera (norte)';
+  if (x >= -37 && x <= -12 && z >= -27 && z <= 23) return 'Pista de fútbol La Losa';
+  if (x >= -8 && x <= -1.5 && z >= -12 && z <= 6) return 'Parque infantil';
+  if (x >= 2.5 && x <= 9.5 && z >= -13 && z <= -5) return 'Mesa de ping-pong';
+  if (z < -42) return 'Bares · Pl. Marqués Llanera';
+  if (x > -9 && z < -16) return 'Explanada';
   return 'Plaza Marqués Llanera';
 }
 // minimap
@@ -1195,10 +1210,10 @@ const mapBg = document.createElement('canvas'); mapBg.width = 180; mapBg.height 
   const rect = (x0, z0, x1, z1, c) => { g.fillStyle = c; g.fillRect((x0 - MAP.x0) * S, (z0 - MAP.z0) * S, (x1 - x0) * S, (z1 - z0) * S); };
   rect(-200, -200, 200, 200, '#e8e4dc');
   rect(-53, -200, -44, 200, '#ffffff'); rect(28.5, -200, 37, 200, '#ffffff'); rect(-200, 31.5, 200, 39.5, '#ffffff'); rect(-200, -58, 200, -54, '#ffffff');
-  rect(-40, -54, 24, 27.6, '#d9d0bf');
-  rect(-37, -27, -13, 23, '#b9cdb2'); rect(-9, -21, 19, 19, '#c9e0b8'); rect(-7, -17, -1, 0, '#3aa58a'); rect(2.5, -13, 9.5, -5, '#bdbdbd');
-  rect(-72, -110, -57, 30, '#d6cfc3'); rect(-72, 44, -57, 90, '#d6cfc3'); rect(-40, -86, 24, -62, '#d6cfc3'); rect(-110, 44, -18, 80, '#d6cfc3');
-  rect(46, -100, 110, 26, '#cfd3d6'); rect(-14, 46, 110, 90, '#cfd3d6');
+  rect(-40, -48, 24, 27.6, '#d9d0bf');
+  rect(-37, -27, -13, 23, '#b9cdb2'); rect(-9, -42, 24, -16.5, '#cbcac5'); rect(-9, -16, 19, 21, '#c9e0b8'); rect(-8, -12, -1.5, 6, '#3aa58a'); rect(2.5, -13, 9.5, -5, '#bdbdbd');
+  rect(-40, -64, 24, -50, '#e3c9a8'); rect(-75, -90, -57, -44, '#e3c9a8');
+  rect(-95, -38, -58, 29, '#cfd3d6'); rect(-110, 44, -18, 85, '#cfd3d6'); rect(46, -46, 110, 26, '#cfd3d6'); rect(-14, 46, 110, 90, '#cfd3d6');
   g.strokeStyle = '#7fb3e8'; g.lineWidth = 2;
   for (const [x0, z0, x1, z1] of [[-48.5, -200, -48.5, 200], [32.5, -200, 32.5, 200], [-200, 35.5, 200, 35.5]]) { g.beginPath(); g.moveTo((x0 - MAP.x0) * S, (z0 - MAP.z0) * S); g.lineTo((x1 - MAP.x0) * S, (z1 - MAP.z0) * S); g.stroke(); }
 }
