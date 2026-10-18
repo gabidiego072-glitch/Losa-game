@@ -166,10 +166,18 @@ async function loadPBR(name) {
     return { map, normalMap, roughnessMap };
   } catch (e) { console.warn('texture failed', name); return null; }
 }
+// binary assets: try the real file, then a base64 copy (<file>.txt) for hosts that only serve web file types
+async function loadBinary(loader, url) {
+  try { return await loader.loadAsync(url); }
+  catch (e) {
+    const r = await fetch(url + '.txt'); if (!r.ok) throw e;
+    return await loader.loadAsync('data:application/octet-stream;base64,' + (await r.text()).trim());
+  }
+}
 const [PB_asphalt, PB_concrete, PB_dirt, PB_bark, PB_plaster, PB_rubber, HDR, GLB] = await Promise.all([
   loadPBR('asphalt'), loadPBR('concrete'), loadPBR('dirt'), loadPBR('bark'), loadPBR('plaster'), loadPBR('rubber'),
-  new RGBELoader(manager).setDataType(THREE.HalfFloatType).loadAsync('assets/sky.hdr').catch(() => null),
-  new GLTFLoader(manager).loadAsync('assets/soldier.glb').catch(() => null),
+  loadBinary(new RGBELoader(manager).setDataType(THREE.HalfFloatType), 'assets/sky.hdr').catch(() => null),
+  loadBinary(new GLTFLoader(manager), 'assets/soldier.glb').catch(() => null),
 ]);
 
 // sky + image based lighting from the HDRI; the sun light is aimed at the sun found in the image
