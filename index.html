@@ -144,6 +144,7 @@
       <div class="mprow"><select id="mpMode"><option value="coop">Cooperativo · 2 contra las oleadas</option><option value="pvp">1 contra 1 · primero a 10 bajas</option></select><button id="hostBtn" class="sec">CREAR PARTIDA</button></div>
       <div class="mprow"><input id="joinCode" placeholder="CÓDIGO" maxlength="4" autocomplete="off" spellcheck="false"><button id="joinBtn" class="sec">UNIRSE</button></div>
       <div id="mpStatus"></div>
+      <button id="cancelMp" class="sec" style="display:none;margin-top:6px">CANCELAR Y JUGAR SOLO</button>
     </div>
     <div id="loading">Cargando texturas y modelos reales…</div>
     <div style="margin-top:10px;font-size:12px;color:var(--muted)">Trazado real: datos © colaboradores de OpenStreetMap · Ortofoto PNOA cedida por © Instituto Geográfico Nacional · Texturas, cielo, pistola, francotirador, mobiliario y botiquín: Poly Haven (CC0) · AK-47: mightydinosaurcol (CC-BY 3.0) · P90 y escopeta: Quaternius (CC0)</div>
@@ -1752,11 +1753,13 @@ function updatePickups(dt) {
 const G = { state: 'menu', wave: 0, toSpawn: 0, alive: 0, kills: 0, score: 0, spawnCd: 0, interT: 0, locked: false, everLocked: false, time: 0 };
 const SPAWNS = [[-29, -49], [-29, -20], [-29, 12], [-29, 46], [54.3, -49], [54.3, -20], [54.3, 10], [54.3, 46], [-34, 41.5], [0, 41.5], [30, 41.5], [61, 41.5], [5, -48], [30, -48]];
 function startWave() {
+  if (MP.active && MP.mode === 'pvp') return;
   G.wave++; G.toSpawn = 3 + G.wave * 2; G.spawnCd = 1.5;
   banner('OLEADA ' + G.wave, G.toSpawn + ' enemigos se acercan', 2.4);
   if (MP.active && MP.role === 'host') { netSend({ t: 'wave', n: G.wave }); netSend({ t: 'banner', a: 'OLEADA ' + G.wave, b: G.toSpawn + ' enemigos se acercan', d: 2.4 }); if (G.dead) respawnLocal(); }
 }
 function spawnEnemy() {
+  if (MP.active && MP.mode === 'pvp') return;   // 1 contra 1: only the two players, never bots
   const tgs = aiTargets(); if (!tgs.length) tgs.push(TGT_LOCAL);
   const cand = SPAWNS.map(([x, z]) => ({ x, z, d: Math.min(...tgs.map(t => Math.hypot(x - t.pos.x, z - t.pos.z))) })).filter(s => s.d > 28);
   const pool = cand.filter(s => tgs.every(t => segBlocked(new V3(s.x, 1.6, s.z), new V3(t.pos.x, t.pos.y + 1.6, t.pos.z))));
@@ -1766,6 +1769,7 @@ function spawnEnemy() {
   G.alive++; G.toSpawn--;
 }
 function updateWaves(dt) {
+  if (MP.active && MP.mode === 'pvp') return;
   if (G.interT > 0) { G.interT -= dt; if (G.interT <= 0) startWave(); return; }
   G.spawnCd -= dt;
   if (G.toSpawn > 0 && G.alive < Math.min(3 + G.wave, 10) && G.spawnCd <= 0) { spawnEnemy(); G.spawnCd = RR(0.8, 2.2); }
@@ -2095,10 +2099,11 @@ function gameOver(txt, title = 'HAS CAÍDO') {
   $('againBtn').disabled = guestWaits; $('againBtn').textContent = guestWaits ? 'ESPERANDO AL ANFITRIÓN' : 'OTRA VEZ';
   $('overOv').classList.remove('hidden');
 }
-$('playBtn').onclick = () => { if (MP.role === 'host' && MP.ready && MP.conn && MP.conn.open) { netSend({ t: 'start', mode: MP.mode }); startGame(true); } else { mpCleanup(); MP.role = null; startGame(false); } };
+$('playBtn').onclick = () => { if (MP.role === 'host' && MP.ready && MP.conn && MP.conn.open) { netSend({ t: 'start', mode: MP.mode }); startGame(true); } else if (!MP.peer) { MP.role = null; startGame(false); } };
 $('againBtn').onclick = () => { if (MP.conn && MP.conn.open) { if (MP.role === 'host') { netSend({ t: 'start', mode: MP.mode }); startGame(true); } } else startGame(false); };
 $('menuBtn').onclick = () => { mpCleanup(); MP.role = null; backToMenu(); };
 $('hostBtn').onclick = () => hostGame();
+$('cancelMp').onclick = () => { mpCleanup(); MP.role = null; mpStatus('Partida de dos jugadores cancelada.'); };
 $('joinBtn').onclick = () => joinGame();
 $('resumeBtn').onclick = resume;
 { const j = new URLSearchParams(location.search).get('join'); if (j) { $('joinCode').value = j.toUpperCase().slice(0, 4); $('mpStatus').innerHTML = `Te han invitado a la partida <b class="code">${$('joinCode').value}</b>. Pulsa <b>UNIRSE</b>.`; } }
@@ -2254,7 +2259,7 @@ const modeName = (m) => m === 'pvp' ? '1 contra 1' : 'Cooperativo';
 function hostGame(retry = 0) {
   if (!peerOk()) return; initAudio();
   mpCleanup(); MP.role = 'host'; MP.mode = $('mpMode').value; MP.code = makeCode();
-  mpStatus('Creando partida…');
+  mpStatus('Creando partida…'); lobbyWait('ESPERANDO A TU AMIGO…');
   const peer = MP.peer = new Peer(PEER_PREFIX + MP.code, { debug: 0 });
   peer.on('open', () => {
     const url = location.href.split('?')[0].split('#')[0] + '?join=' + MP.code;
@@ -2263,7 +2268,7 @@ function hostGame(retry = 0) {
   peer.on('connection', (conn) => {
     if (MP.conn) { conn.on('open', () => conn.close()); return; }
     MP.conn = conn; wireConn(conn);
-    conn.on('open', () => { netSend({ t: 'hello', mode: MP.mode }); MP.ready = true; $('playBtn').textContent = 'EMPEZAR'; mpStatus(`¡Tu amigo se ha unido! · <b>${modeName(MP.mode)}</b><br>Pulsa <b>EMPEZAR</b> cuando estéis listos.`); });
+    conn.on('open', () => { netSend({ t: 'hello', mode: MP.mode }); MP.ready = true; $('playBtn').disabled = false; $('playBtn').textContent = 'EMPEZAR'; mpStatus(`¡Tu amigo se ha unido! · <b>${modeName(MP.mode)}</b><br>Pulsa <b>EMPEZAR</b> cuando estéis listos.`); });
   });
   peer.on('error', (e) => { if (e.type === 'unavailable-id' && retry < 3) return hostGame(retry + 1); mpStatus('Error de conexión (' + e.type + '). Prueba otra vez.'); });
 }
@@ -2271,7 +2276,7 @@ function joinGame(code) {
   if (!peerOk()) return; initAudio();
   code = (code || $('joinCode').value || '').trim().toUpperCase();
   if (code.length !== 4) { mpStatus('Escribe el código de 4 letras que te ha pasado tu amigo.'); return; }
-  mpCleanup(); MP.role = 'guest'; MP.code = code; mpStatus('Conectando con la partida <b>' + code + '</b>…');
+  mpCleanup(); MP.role = 'guest'; MP.code = code; mpStatus('Conectando con la partida <b>' + code + '</b>…'); lobbyWait('ESPERANDO AL ANFITRIÓN…');
   const peer = MP.peer = new Peer({ debug: 0 });
   peer.on('open', () => {
     const conn = peer.connect(PEER_PREFIX + code, { reliable: true });
@@ -2286,20 +2291,22 @@ function mpCleanup() {
   try { c && c.close(); } catch (e) { } try { p && p.destroy(); } catch (e) { }
   if (MP.remote) { MP.remote.remove(); MP.remote = null; }
   for (const px of proxies) scene.remove(px.mesh); proxies.length = 0;
-  $('playBtn').textContent = 'JUGAR (1 jugador)';
+  $('playBtn').textContent = 'JUGAR (1 jugador)'; $('playBtn').disabled = false; $('cancelMp').style.display = 'none';
 }
+function lobbyWait(label) { $('playBtn').disabled = true; $('playBtn').textContent = label; $('cancelMp').style.display = 'inline-block'; }
 function wireConn(conn) { conn.on('data', onNet); conn.on('close', () => onDisconnect(conn)); conn.on('error', () => onDisconnect(conn)); }
 function onDisconnect(conn) {
   if (MP.conn !== conn) return;
   const was = MP.active; MP.conn = null; MP.ready = false;
   if (MP.remote) { MP.remote.remove(); MP.remote = null; }
   for (const px of proxies) scene.remove(px.mesh); proxies.length = 0;
-  $('playBtn').textContent = 'JUGAR (1 jugador)';
+  $('playBtn').textContent = 'JUGAR (1 jugador)'; $('playBtn').disabled = false; $('cancelMp').style.display = 'none';
   if (was) {
     MP.active = false;
     if (MP.role === 'host' && MP.mode === 'coop') { banner('TU AMIGO SE HA DESCONECTADO', 'sigues jugando solo', 3); if (G.dead) gameOver(); }
-    else { banner('CONEXIÓN PERDIDA', 'volviendo al menú…', 2.5); setTimeout(() => backToMenu(), 1800); }
-  } else mpStatus('Se ha cortado la conexión con tu amigo.');
+    else { banner('CONEXIÓN PERDIDA', 'volviendo al menú…', 2.5); setTimeout(() => { mpCleanup(); MP.role = null; backToMenu(); }, 1800); }
+  } else if (MP.role === 'host' && MP.peer) { lobbyWait('ESPERANDO A TU AMIGO…'); mpStatus(`Tu amigo se ha desconectado. Puede volver a unirse con el código <b class="code">${MP.code}</b>.`); }
+  else { mpCleanup(); MP.role = null; mpStatus('Se ha cortado la conexión con tu amigo.'); }
 }
 function backToMenu() {
   G.state = 'menu'; firing = false; ads = false; G.dead = false;
