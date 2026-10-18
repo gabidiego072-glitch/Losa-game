@@ -25,9 +25,13 @@ python3 -m http.server 8000
 | C / Ctrl | Agacharse |
 | R | Recargar |
 | 1 – 5 / rueda | Cambiar arma |
+| G | Lanzar granada de fragmentación |
+| V | Lanzar granada cegadora (flash) |
 | O | Invencibilidad (activar / desactivar) |
 | F | Mostrar FPS y calidad |
 | Esc | Pausa |
+
+Empiezas con 2 granadas y 2 flashes; las cajas de munición y cada oleada superada dan una más de cada (máximo 4). A partir de la oleada 2 los enemigos también lanzan granadas si te escondes.
 
 Sobrevive a oleadas de enemigos cada vez más numerosos y precisos. Usa los coches, los troncos y
 los edificios como cobertura. Los enemigos dejan botiquines y munición al caer.

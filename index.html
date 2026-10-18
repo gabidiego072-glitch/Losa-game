@@ -75,6 +75,9 @@
   #scope .v{top:0;bottom:0;left:50%;width:2px;margin-left:-1px}
   #god{left:50%;top:70px;transform:translateX(-50%);display:none;background:rgba(255,210,60,.92);color:#1a1205;font-weight:700;letter-spacing:.18em;padding:3px 12px;border-radius:5px;font-size:15px}
   button:disabled{opacity:.6;cursor:wait}
+  #ammo .nd{font-size:16px;color:var(--fg);margin-bottom:4px}
+  #nadeWarn{left:50%;top:38%;transform:translateX(-50%);display:none;background:rgba(200,40,30,.85);color:#fff;font-weight:700;letter-spacing:.15em;padding:4px 14px;border-radius:5px;font-size:18px}
+  #blind{inset:0;background:#fff;opacity:0;mix-blend-mode:normal}
   .qrow{display:flex;gap:10px;align-items:center;justify-content:center;margin:0 0 16px;font-size:17px}
   .qrow select{font-family:inherit;font-size:16px;background:#2a2f34;color:#fff;border:1px solid #555;border-radius:6px;padding:4px 8px}
   #fps{left:16px;top:92px;font-size:14px;color:var(--muted);display:none;background:var(--panel);padding:3px 8px;border-radius:5px}
@@ -101,8 +104,10 @@
 <div class="hud" id="scope"><i class="h"></i><i class="v"></i></div>
 <div class="hud" id="god">INVENCIBLE</div>
 <div class="hud" id="fps"></div>
+<div class="hud" id="nadeWarn">⚠ GRANADA CERCA</div>
+<div class="hud" id="blind"></div>
 <div class="hud" id="hp"><div class="lbl">SALUD</div><div class="num" id="hpNum">100</div><div class="bar"><div class="fill" id="hpFill"></div></div></div>
-<div class="hud" id="ammo"><div class="wn" id="wname"></div><div class="slots" id="slots"></div><div class="st" id="ammoSt"></div><div class="mag" id="mag">30</div><div class="res" id="res">/ 120</div></div>
+<div class="hud" id="ammo"><div class="nd" id="nades"></div><div class="wn" id="wname"></div><div class="slots" id="slots"></div><div class="st" id="ammoSt"></div><div class="mag" id="mag">30</div><div class="res" id="res">/ 120</div></div>
 
 <div class="ov" id="startOv">
   <div class="card">
@@ -117,6 +122,8 @@
       <span><kbd>R</kbd></span><span>Recargar</span>
       <span><kbd>1</kbd>–<kbd>5</kbd> / rueda</span><span>Cambiar arma: pistola, subfusil P90, AK-47, escopeta, francotirador</span>
       <span><kbd>O</kbd></span><span>Invencibilidad (activar / desactivar)</span>
+      <span><kbd>G</kbd></span><span>Lanzar granada (rebota, explota a los 2,5 s)</span>
+      <span><kbd>V</kbd></span><span>Lanzar flash (ciega a quien lo mire)</span>
       <span><kbd>F</kbd></span><span>Mostrar FPS y calidad</span>
       <span><kbd>Esc</kbd></span><span>Pausa</span>
     </div>
@@ -1449,6 +1456,7 @@ function updateFx(dt) {
     if (k >= 1) { scene.remove(f.o); if (f.kind === 'line') f.o.geometry.dispose(); if (f.kind !== 'shell') f.o.material.dispose(); fx.splice(i, 1); continue; }
     if (f.kind === 'puff') { f.o.position.addScaledVector(f.v, dt); f.v.multiplyScalar(0.92); f.o.scale.setScalar(0.1 + f.grow * k); f.o.material.opacity = 0.7 * (1 - k); }
     else if (f.kind === 'line') f.o.material.opacity = 0.85 * (1 - k);
+    else if (f.kind === 'flash') { f.o.material.opacity = 1 - k; if (!f.s0) f.s0 = f.o.scale.x; f.o.scale.setScalar(f.s0 * (1 + k * 0.8)); }
     else if (f.kind === 'shell') {
       f.v.y -= 9.8 * dt; f.o.position.addScaledVector(f.v, dt);
       const gy = groundAt(f.o.position.x, f.o.position.z, 0.01, f.o.position.y + 0.3) + 0.01;
@@ -1581,13 +1589,25 @@ class Enemy {
     if (this.think <= 0) {
       this.think = RR(0.15, 0.3);
       const was = this.canSee;
-      this.canSee = dist < 75 && !segBlocked(this.eye(), head);
-      if (this.canSee) this.lastSeen = player.pos.clone();
+      this.canSee = dist < 75 && !(this.blindT > 0) && !segBlocked(this.eye(), head);
+      if (this.canSee) { this.lastSeen = player.pos.clone(); this.hiddenT = 0; }
       if (this.canSee && !was) this.seeT = Math.min(this.seeT, 0);
     }
     this.seeT = this.canSee ? this.seeT + dt : Math.max(0, this.seeT - dt * 0.5);
     this.repath -= dt; this.strafeT -= dt;
     let speed = this.speed;
+    // blinded by a flashbang: stumble around slowly, can't aim
+    if (this.blindT > 0) {
+      this.blindT -= dt; this.canSee = false; this.burst = 0; speed = 0.8;
+      if (this.repath <= 0) { this.repath = 1; const a = Math.random() * 6.28; this.path = findPath(this.pos.x, this.pos.z, this.pos.x + Math.cos(a) * 3, this.pos.z + Math.sin(a) * 3).slice(0, 2); }
+    }
+    // the player has been hiding nearby for a while: throw a frag at the last known position
+    this.hiddenT = (this.hiddenT || 0) + (this.canSee ? 0 : dt); this.nadeCd = (this.nadeCd ?? RR(6, 14)) - dt;
+    if (!this.canSee && !(this.blindT > 0) && this.lastSeen && this.hiddenT > 3.5 && this.nadeCd <= 0 && G.wave >= 2 && liveFrags() < 2) {
+      const d = Math.hypot(this.lastSeen.x - this.pos.x, this.lastSeen.z - this.pos.z);
+      if (d > 7 && d < 28) { this.nadeCd = RR(14, 24); throwGrenade('frag', new V3(this.pos.x, this.pos.y + 1.6, this.pos.z), this.lastSeen.clone(), false); }
+      else this.nadeCd = 2;
+    }
     const engaging = this.canSee && dist < 32;
     if (engaging) {
       speed = 1.6;
@@ -1689,7 +1709,7 @@ function updatePickups(dt) {
     const d = Math.hypot(p.g.position.x - player.pos.x, p.g.position.z - player.pos.z);
     if (d < 1.3 && Math.abs(p.baseY - player.pos.y) < 1.5) {
       if (p.type === 'med') { if (player.hp >= 100) continue; player.hp = Math.min(100, player.hp + 35); banner('+35 SALUD', '', 0.8); }
-      else { giveAmmo(1); banner('+MUNICIÓN', 'un cargador para cada arma', 0.9); }
+      else { giveAmmo(1); NADES.frag = Math.min(4, NADES.frag + 1); NADES.flash = Math.min(4, NADES.flash + 1); banner('+MUNICIÓN', 'un cargador por arma, +1 granada y +1 flash', 1.1); }
       sfxClick(900, 0.2, 0.08); setTimeout(() => sfxClick(1400, 0.2, 0.08), 70);
       scene.remove(p.g); pickups.splice(i, 1);
     } else if (p.t > 40) { scene.remove(p.g); pickups.splice(i, 1); }
@@ -1716,14 +1736,142 @@ function updateWaves(dt) {
   G.spawnCd -= dt;
   if (G.toSpawn > 0 && G.alive < Math.min(3 + G.wave, 10) && G.spawnCd <= 0) { spawnEnemy(); G.spawnCd = RR(0.8, 2.2); }
   if (G.toSpawn === 0 && G.alive === 0 && G.wave > 0) {
-    G.interT = 7; player.hp = Math.min(100, player.hp + 25); giveAmmo(0.5);
+    G.interT = 7; player.hp = Math.min(100, player.hp + 25); giveAmmo(0.5); NADES.frag = Math.min(4, NADES.frag + 1); NADES.flash = Math.min(4, NADES.flash + 1);
     banner('OLEADA ' + G.wave + ' SUPERADA', '+25 salud · siguiente oleada en 7 s', 3);
   }
 }
 
+// ============================================================ grenades and flashbangs
+const NADES = { frag: 2, flash: 2 };
+const grenades = [];
+const fragGeo = new THREE.SphereGeometry(0.045, 12, 10).scale(1, 1.25, 1), flashGeo = new THREE.CylinderGeometry(0.032, 0.032, 0.12, 12);
+const fragMat = std({ color: 0x3f4a2c, roughness: 0.6, metalness: 0.2 }), flashMatG = std({ color: 0x6d7378, roughness: 0.4, metalness: 0.6, env: 1 });
+const leverGeo = new THREE.BoxGeometry(0.012, 0.09, 0.02);
+const liveFrags = () => grenades.filter(g => g.kind === 'frag').length;
+function grenadeMesh(kind) {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(kind === 'frag' ? fragGeo : flashGeo, kind === 'frag' ? fragMat : flashMatG); g.add(body);
+  const lever = new THREE.Mesh(leverGeo, M.metal); lever.position.set(0.035, 0.03, 0); g.add(lever);
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.03, 8), M.metal); top.position.y = kind === 'frag' ? 0.06 : 0.07; g.add(top);
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+// throw from `from` towards `target` (enemy throws) or along the view direction (player throws)
+function throwGrenade(kind, from, target, byPlayer) {
+  const vel = new V3();
+  if (byPlayer) {
+    const dir = new V3(0, 0, -1).applyEuler(camera.rotation);
+    vel.copy(dir).multiplyScalar(15).add(new V3(0, 3.2, 0)).add(new V3(player.vel.x, 0, player.vel.z));
+  } else {
+    // ballistic lob that lands roughly on the target after ~1.1 s, with some error
+    const T = 1.1, err = new V3(RR(-2.5, 2.5), 0, RR(-2.5, 2.5)), to = target.clone().add(err);
+    vel.set((to.x - from.x) / T, (to.y + 0.2 - from.y + 4.9 * T * T) / T, (to.z - from.z) / T);
+    banner('¡GRANADA!', '', 1.0);
+  }
+  const m = grenadeMesh(kind); m.position.copy(from); scene.add(m);
+  grenades.push({ kind, m, pos: from.clone(), vel, fuse: kind === 'frag' ? 2.6 : 1.7, spin: new V3(RR(-12, 12), RR(-12, 12), RR(-12, 12)), byPlayer, bounces: 0 });
+  sfxClick(900, 0.12, 0.04);
+}
+function updateGrenades(dt) {
+  for (let i = grenades.length - 1; i >= 0; i--) {
+    const g = grenades[i];
+    g.fuse -= dt;
+    // physics in a few sub-steps: gravity, bounces on the ground and against boxes
+    const steps = 3, h = dt / steps;
+    for (let k = 0; k < steps; k++) {
+      g.vel.y -= 9.8 * h; g.pos.addScaledVector(g.vel, h);
+      for (const c of nearCols(g.pos.x - 0.1, g.pos.x + 0.1, g.pos.z - 0.1, g.pos.z + 0.1)) {
+        if (g.pos.x < c.minX || g.pos.x > c.maxX || g.pos.z < c.minZ || g.pos.z > c.maxZ || g.pos.y > c.maxY || g.pos.y < c.minY) continue;
+        if (c.maxY < 0.6 || g.pos.y - g.vel.y * h >= c.maxY - 0.02) { g.pos.y = c.maxY + 0.05; if (g.vel.y < 0) g.vel.y *= -0.3; g.vel.x *= 0.7; g.vel.z *= 0.7; continue; }
+        const dx0 = g.pos.x - c.minX, dx1 = c.maxX - g.pos.x, dz0 = g.pos.z - c.minZ, dz1 = c.maxZ - g.pos.z, m = Math.min(dx0, dx1, dz0, dz1);
+        if (m === dx0) { g.pos.x = c.minX - 0.05; g.vel.x = -Math.abs(g.vel.x) * 0.45; } else if (m === dx1) { g.pos.x = c.maxX + 0.05; g.vel.x = Math.abs(g.vel.x) * 0.45; }
+        else if (m === dz0) { g.pos.z = c.minZ - 0.05; g.vel.z = -Math.abs(g.vel.z) * 0.45; } else { g.pos.z = c.maxZ + 0.05; g.vel.z = Math.abs(g.vel.z) * 0.45; }
+        if (g.bounces++ < 6) sfxThud(0.08);
+      }
+      const gy = groundAt(g.pos.x, g.pos.z, 0.03, g.pos.y + 0.3) + 0.045;
+      if (g.pos.y < gy) {
+        g.pos.y = gy;
+        if (Math.abs(g.vel.y) > 1.2 && g.bounces++ < 6) sfxThud(0.07);
+        g.vel.y = Math.abs(g.vel.y) * 0.3; g.vel.x *= 0.62; g.vel.z *= 0.62; g.spin.multiplyScalar(0.6);
+      }
+    }
+    g.m.position.copy(g.pos); g.m.rotation.x += g.spin.x * dt; g.m.rotation.y += g.spin.y * dt; g.m.rotation.z += g.spin.z * dt;
+    if (g.fuse <= 0) { scene.remove(g.m); grenades.splice(i, 1); g.kind === 'frag' ? explodeFrag(g.pos) : explodeFlash(g.pos); }
+  }
+  // danger warning when a frag lies close to the player
+  let warn = false;
+  for (const g of grenades) if (g.kind === 'frag' && g.pos.distanceTo(player.pos) < 8) warn = true;
+  hud.nadeWarn.style.display = warn ? 'block' : 'none';
+}
+function sfxBoom(vol, dist, flash) {
+  if (!AC) return; const t = AC.currentTime;
+  const n = AC.createBufferSource(); n.buffer = noiseBuf;
+  const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = (flash ? 6000 : 1800) / (1 + dist / 25);
+  const g = AC.createGain(); g.gain.setValueAtTime(vol * 1.6, t); g.gain.exponentialRampToValueAtTime(0.001, t + (flash ? 0.6 : 1.4));
+  const send = AC.createGain(); send.gain.value = 0.9; send.connect(verb);
+  n.connect(f); f.connect(g); g.connect(master); g.connect(send); n.start(t); n.stop(t + 1.5);
+  const o = AC.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(flash ? 120 : 70, t); o.frequency.exponentialRampToValueAtTime(25, t + 0.6);
+  const og = AC.createGain(); og.gain.setValueAtTime(vol * 1.4, t); og.gain.exponentialRampToValueAtTime(0.001, t + 0.7); o.connect(og); og.connect(master); o.start(t); o.stop(t + 0.8);
+}
+let shakeT = 0, blindT = 0, ringOsc = null, ringGain = null;
+function explodeFrag(p) {
+  const d = p.distanceTo(camera.position), sp = spatial(p);
+  sfxBoom(Math.min(1.2, 2.2 / (1 + d / 10)), d, false);
+  // fireball, smoke, dust and a scorch mark
+  flashLight.position.copy(p).add(new V3(0, 0.8, 0)); flashLight.intensity = 40; flashLight.distance = 25;
+  const fb = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.flash, color: 0xffc070, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  fb.position.copy(p).add(new V3(0, 0.6, 0)); fb.scale.setScalar(3.5); scene.add(fb); fx.push({ o: fb, life: 0.25, age: 0, kind: 'flash' });
+  spawnPuff(p.clone().add(new V3(0, 0.5, 0)), 0x6a6460, 14, 1.2, 3.5);
+  spawnPuff(p.clone().add(new V3(0, 0.2, 0)), 0xb8a888, 10, 0.8, 5);
+  const sc = new THREE.Mesh(new THREE.CircleGeometry(1.4, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ map: T.hole, transparent: true, opacity: 0.8, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -6, polygonOffsetUnits: -6 }));
+  sc.position.set(p.x, groundAt(p.x, p.z, 0.05, p.y + 0.5) + 0.02, p.z); scene.add(sc); decals.push(sc);
+  shakeT = Math.max(shakeT, Math.max(0, 1 - d / 30));
+  // damage: falls off with distance, blocked by walls / cars
+  const R = 7.5, c = p.clone().add(new V3(0, 0.4, 0));
+  for (const e of enemies) {
+    if (e.dead) continue; const de = e.pos.distanceTo(p);
+    if (de < R && !segBlocked(c, e.eye())) { const dmg = 160 * Math.pow(1 - de / R, 1.3); e.hurt(dmg, false); if (e.dead) showHit(true); else showHit(false); }
+  }
+  const dp = p.distanceTo(player.pos);
+  if (dp < R && !segBlocked(c, camera.position)) hurtPlayer(130 * Math.pow(1 - dp / R, 1.4), p);
+}
+function explodeFlash(p) {
+  const d = p.distanceTo(camera.position);
+  sfxBoom(Math.min(1.2, 2 / (1 + d / 10)), d, true);
+  flashLight.position.copy(p).add(new V3(0, 0.6, 0)); flashLight.intensity = 80; flashLight.distance = 30;
+  const fb = new THREE.Sprite(new THREE.SpriteMaterial({ map: T.puff, color: 0xffffff, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  fb.position.copy(p).add(new V3(0, 0.3, 0)); fb.scale.setScalar(5); scene.add(fb); fx.push({ o: fb, life: 0.2, age: 0, kind: 'flash' });
+  spawnPuff(p.clone().add(new V3(0, 0.3, 0)), 0xdddddd, 8, 0.6, 1.5);
+  const c = p.clone().add(new V3(0, 0.3, 0)), R = 16;
+  for (const e of enemies) {
+    if (e.dead) continue; const de = e.pos.distanceTo(p); if (de > R || segBlocked(c, e.eye())) continue;
+    const toG = new V3(p.x - e.pos.x, 0, p.z - e.pos.z).normalize(), facing = Math.max(0, Math.sin(e.face) * toG.x + Math.cos(e.face) * toG.z);
+    e.blindT = Math.max(e.blindT || 0, (1.5 + 3 * facing) * (1 - de / R) + 1);
+  }
+  // the player: depends on distance, line of sight and whether we look at it
+  if (d < 22 && !segBlocked(c, camera.position)) {
+    const look = new V3(0, 0, -1).applyEuler(camera.rotation), to = c.clone().sub(camera.position).normalize();
+    const amt = (1 - d / 22) * (0.25 + 0.75 * Math.max(0, look.dot(to)));
+    if (amt > 0.05) { blindT = Math.max(blindT, 4.5 * amt); startRinging(amt); }
+  }
+}
+function startRinging(amt) {
+  if (!AC) return; const t = AC.currentTime;
+  if (!ringOsc) { ringOsc = AC.createOscillator(); ringOsc.frequency.value = 3700; ringGain = AC.createGain(); ringGain.gain.value = 0; ringOsc.connect(ringGain); ringGain.connect(master); ringOsc.start(); }
+  ringGain.gain.cancelScheduledValues(t); ringGain.gain.setValueAtTime(0.12 * amt, t); ringGain.gain.exponentialRampToValueAtTime(0.0001, t + 4.5 * amt + 0.5);
+  master.gain.cancelScheduledValues(t); master.gain.setValueAtTime(0.12, t); master.gain.linearRampToValueAtTime(0.5, t + 3.5 * amt + 0.5);
+}
+let throwT = 0;
+function playerThrow(kind) {
+  if (G.state !== 'play' || throwT > 0 || NADES[kind] <= 0 || switchT > 0) return;
+  NADES[kind]--; throwT = 0.55; reloading = 0;
+  const from = camera.position.clone().add(new V3(0, -0.1, 0)).addScaledVector(new V3(Math.cos(player.yaw), 0, -Math.sin(player.yaw)), 0.2);
+  setTimeout(() => throwGrenade(kind, from.copy(camera.position).add(new V3(0, -0.15, 0)), null, true), 180);
+}
+
 // ============================================================ HUD
 const $ = (id) => document.getElementById(id);
-const hud = { hpNum: $('hpNum'), hpFill: $('hpFill'), mag: $('mag'), res: $('res'), st: $('ammoSt'), wave: $('waveTxt'), info: $('infoTxt'), banner: $('banner'), vig: $('vig'), hit: $('hit'), cross: $('cross'), dirs: $('dirs'), street: $('streetName'), wname: $('wname'), slots: $('slots'), scope: $('scope'), god: $('god'), fps: $('fps') };
+const hud = { hpNum: $('hpNum'), hpFill: $('hpFill'), mag: $('mag'), res: $('res'), st: $('ammoSt'), wave: $('waveTxt'), info: $('infoTxt'), banner: $('banner'), vig: $('vig'), hit: $('hit'), cross: $('cross'), dirs: $('dirs'), street: $('streetName'), wname: $('wname'), slots: $('slots'), scope: $('scope'), god: $('god'), fps: $('fps'), nades: $('nades'), nadeWarn: $('nadeWarn'), blind: $('blind') };
 let bannerT = 0, hitT = 0, vigT = 0;
 function banner(t, sub, dur) { hud.banner.innerHTML = t + (sub ? '<small>' + sub + '</small>' : ''); hud.banner.style.opacity = 1; bannerT = dur; }
 function showHit(head) { hud.hit.className = 'hud' + (head ? ' head' : ''); hud.hit.style.opacity = 1; hitT = 0.12; sfxClick(head ? 2600 : 1900, 0.18, 0.03); }
@@ -1799,6 +1947,7 @@ function updateHUD(dt) {
   sty(hud.mag, 'color', W.mag <= Math.ceil(W.magSize / 5) ? 'var(--danger)' : '');
   txt(hud.st, reloading > 0 ? 'RECARGANDO…' : (W.mag === 0 ? (W.reserve ? 'PULSA R' : 'SIN MUNICIÓN') : ''));
   txt(hud.wname, W.name);
+  txt(hud.nades, `💣 ${NADES.frag} (G)   ⚡ ${NADES.flash} (V)`);
   [...hud.slots.children].forEach((s, i) => { const c = i === cur ? 'on' : (WEAPONS[i].mag + WEAPONS[i].reserve === 0 ? 'empty' : ''); if (s.className !== c) s.className = c; });
   txt(hud.wave, G.interT > 0 ? 'DESCANSO · ' + Math.ceil(G.interT) : 'OLEADA ' + G.wave);
   txt(hud.info, `Enemigos: ${G.alive + G.toSpawn} · Bajas: ${G.kills} · Puntos: ${G.score}`);
@@ -1831,6 +1980,8 @@ addEventListener('keydown', (e) => {
   if (G.state !== 'play') return;
   if (e.code === 'KeyR') startReload();
   if (e.code === 'Space') e.preventDefault();
+  if (e.code === 'KeyG') playerThrow('frag');
+  if (e.code === 'KeyV') playerThrow('flash');
   if (e.code === 'KeyO') { player.god = !player.god; banner(player.god ? 'INVENCIBILIDAD ACTIVADA' : 'INVENCIBILIDAD DESACTIVADA', 'pulsa O para cambiar', 1.4); if (player.god) player.hp = 100; }
   if (/^Digit[1-5]$/.test(e.code)) selectWeapon(+e.code.slice(5) - 1);
   if ((e.code === 'Escape' || e.code === 'KeyP') && !G.locked) pause();
@@ -1865,6 +2016,7 @@ function startGame() {
   for (const p of pickups) scene.remove(p.g); pickups.length = 0;
   Object.assign(player, { hp: 100, crouch: false, eye: 1.62, yaw: 2.6, pitch: 0 }); player.pos.set(16, 0.17, -12); player.vel.set(0, 0, 0);
   for (const W of WEAPONS) { W.mag = W.magSize; W.reserve = W.reserve0; W.g.visible = false; }
+  NADES.frag = 2; NADES.flash = 2; for (const g of grenades) scene.remove(g.m); grenades.length = 0; blindT = 0; shakeT = 0; for (const e of enemies) e.blindT = 0;
   cur = 2; WEAPONS[cur].g.visible = true; WEAPONS[cur].g.position.copy(WEAPONS[cur].hipV);
   reloading = 0; heat = 0;
   Object.assign(G, { state: 'play', wave: 0, toSpawn: 0, alive: 0, kills: 0, score: 0, interT: 0 });
@@ -1908,7 +2060,7 @@ function shoot() {
   player.pitch += W.recoil * (ads ? 0.7 : 1) * (player.crouch ? 0.75 : 1) + Math.random() * W.recoil * 0.3;
   player.yaw += RR(-1, 1) * W.recoil * 0.3;
   W.flash.visible = W.flash2.visible = true; W.flash.rotation.z = Math.random() * 6; muzzleTimer = 0.04;
-  flashLight.intensity = W.id === 'sniper' || W.id === 'shotgun' ? 10 : 6; flashLight.position.copy(camera.position).add(new V3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw)));
+  flashLight.distance = 12; flashLight.intensity = W.id === 'sniper' || W.id === 'shotgun' ? 10 : 6; flashLight.position.copy(camera.position).add(new V3(-Math.sin(player.yaw), 0, -Math.cos(player.yaw)));
   sfxShot(1, 0, 0, W.id);
   if (W.id === 'shotgun') { pumpT = 0.5; setTimeout(() => sfxClick(300, 0.18, 0.07), 280); setTimeout(() => sfxClick(420, 0.18, 0.06), 420); }
   else if (W.id === 'sniper') setTimeout(() => { sfxClick(380, 0.18, 0.06); setTimeout(() => sfxClick(600, 0.15, 0.05), 250); }, 400);
@@ -1975,10 +2127,14 @@ function updatePlayer(dt) {
   const bob = Math.sin(bobT * 2) * 0.03 * Math.min(1, hs / 4) * (1 - adsT * 0.8);
   camera.position.set(player.pos.x, player.pos.y + player.eye + bob, player.pos.z);
   camera.rotation.set(player.pitch, player.yaw, 0);
+  if (shakeT > 0) { shakeT = Math.max(0, shakeT - dt * 1.6); camera.rotation.x += (Math.random() - 0.5) * 0.05 * shakeT; camera.rotation.y += (Math.random() - 0.5) * 0.05 * shakeT; camera.position.y += (Math.random() - 0.5) * 0.06 * shakeT; }
+  if (blindT > 0) blindT = Math.max(0, blindT - dt);
+  hud.blind.style.opacity = Math.min(1, blindT).toFixed(3);
+  if (throwT > 0) throwT = Math.max(0, throwT - dt);
   // weapon logic
   fireCd -= dt; heat = Math.max(0, heat - dt * 1.6); switchT = Math.max(0, switchT - dt); pumpT = Math.max(0, pumpT - dt);
   if (reloading > 0) { reloading -= dt; if (reloading <= 0) { const take = Math.min(W.magSize - W.mag, W.reserve); W.mag += take; W.reserve -= take; } }
-  const canFire = fireCd <= 0 && reloading <= 0 && switchT <= 0 && W.mag > 0 && !sprint;
+  const canFire = fireCd <= 0 && reloading <= 0 && switchT <= 0 && throwT <= 0 && W.mag > 0 && !sprint;
   if (firing && canFire && (W.auto || !shotLatch)) shoot();
   if (W.mag === 0 && reloading <= 0 && W.reserve > 0 && !firing && switchT <= 0) startReload();
   if (muzzleTimer > 0) { muzzleTimer -= dt; if (muzzleTimer <= 0) W.flash.visible = W.flash2.visible = false; }
@@ -1997,6 +2153,7 @@ function updatePlayer(dt) {
   if (sprint) { gp.x += 0.05; gp.y -= 0.05; ry = 0.6; rz = 0.25; rx -= 0.25; }
   if (reloading > 0) { const k = Math.sin(Math.PI * (1 - reloading / reloadTotal)); gp.y -= 0.12 * k; rx -= 0.6 * k; rz = 0.5 * k; }
   if (switchT > 0) { gp.y -= switchT * 0.8; rx -= switchT * 1.5; }
+  if (throwT > 0) { const k = Math.sin(Math.PI * (1 - throwT / 0.55)); gp.y -= 0.25 * k; rx -= 0.9 * k; }
   if (pumpMesh) pumpMesh.position.z = -0.4 + Math.sin(Math.min(1, pumpT / 0.5) * Math.PI) * 0.08;
   W.g.position.lerp(gp, Math.min(1, dt * 20));
   W.g.rotation.x += (rx - W.g.rotation.x) * Math.min(1, dt * 14);
@@ -2086,7 +2243,7 @@ function frame() {
   if (G.state === 'play') {
     updatePlayer(dt);
     for (let i = enemies.length - 1; i >= 0; i--) enemies[i]?.update(dt);
-    updateWaves(dt); updatePickups(dt);
+    updateWaves(dt); updatePickups(dt); updateGrenades(dt);
   } else if (G.state === 'menu') {
     menuT += dt * 0.06;
     camera.position.set(8 + Math.cos(menuT) * 38, 16, 2 + Math.sin(menuT) * 34);
@@ -2119,8 +2276,8 @@ WEAPONS[cur].g.visible = true; WEAPONS[cur].g.position.copy(WEAPONS[cur].hipV);
 frame();
 $('playBtn').disabled = false; $('playBtn').textContent = 'JUGAR'; $('loading').textContent = 'Sobrevive a las oleadas. Los enemigos dejan botiquines y munición.';
 // debug hook: run game logic without rendering (used for automated tests)
-function sim(steps, dt = 1 / 60) { for (let k = 0; k < steps && G.state === 'play'; k++) { updatePlayer(dt); for (let i = enemies.length - 1; i >= 0; i--) enemies[i]?.update(dt); updateWaves(dt); updatePickups(dt); updateFx(dt); } }
-window.__game = { G, player, enemies, camera, colliders, sim, shoot: () => shoot(), findPath, WEAPONS, selectWeapon, scene, composer, bloom, grade, renderer, THREE };
+function sim(steps, dt = 1 / 60) { for (let k = 0; k < steps && G.state === 'play'; k++) { updatePlayer(dt); for (let i = enemies.length - 1; i >= 0; i--) enemies[i]?.update(dt); updateWaves(dt); updatePickups(dt); updateGrenades(dt); updateFx(dt); } }
+window.__game = { G, player, enemies, camera, colliders, sim, shoot: () => shoot(), findPath, WEAPONS, selectWeapon, scene, composer, bloom, grade, renderer, THREE, explodeFrag, explodeFlash, NADES, getBlind: () => blindT };
 </script>
 </body>
 </html>
