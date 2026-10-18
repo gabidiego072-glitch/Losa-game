@@ -52,7 +52,7 @@ Algunas redes muy restrictivas (colegios, empresas) bloquean la conexión direct
 
 1. En GitHub, abre el repositorio → **Settings** → **Pages**.
 2. En *Build and deployment* elige **Deploy from a branch**, la rama del juego y la carpeta **/ (root)**, y guarda.
-3. En un par de minutos tendrás el enlace `https://<tu-usuario>.github.io/<repositorio>/` para compartir con tus amigos.
+3. En un par de minutos tendrás el enlace para compartir con tus amigos: **https://gabidiego072-glitch.github.io/Losa-game/**
 
 ## Armas
 
