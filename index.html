@@ -722,9 +722,9 @@ T.hedge = makeTex(128, 128, (g, w, h) => {
   speckle(g, w, h, 5000, ['#3d5e2a', '#4b7033', '#263d1b', '#5a8040'], 1, 3);
 });
 T.flowers = makeTex(128, 128, (g, w, h) => {
-  g.fillStyle = '#3f2f22'; g.fillRect(0, 0, w, h);
-  speckle(g, w, h, 5000, ['#3d6b2c', '#4f7d35', '#2e5422', '#5a8a3a'], 2, 5);
-  speckle(g, w, h, 700, ['#d1202a', '#e2343a', '#b5141f', '#f05a4a'], 2, 4);
+  g.fillStyle = '#457a30'; g.fillRect(0, 0, w, h);
+  speckle(g, w, h, 5000, ['#4f8a36', '#5f9a40', '#3c6e2a', '#6aa848'], 2, 5);
+  speckle(g, w, h, 900, ['#d1202a', '#e2343a', '#b5141f', '#f05a4a', '#e8586a'], 1.5, 3.5);
 });
 T.brickFacade = facadeTex('#b8693f', '#e9e4da', true);
 T.brickFacade2 = facadeTex('#c27a4c', '#7c6a58', true);
@@ -765,10 +765,13 @@ function railing(x0, z0, x1, z1, y = 0.15, hgt = 0.75) {
   for (let i = 0; i <= n; i++) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.02, hgt, 0.02), railM); p.position.set(x0 + (x1 - x0) * i / n, y + hgt / 2, z0 + (z1 - z0) * i / n); scene.add(p); }
   const t = 0.06; addCol(Math.min(x0, x1) - t, Math.max(x0, x1) + t, Math.min(z0, z1) - t, Math.max(z0, z1) + t, 0, y + hgt, { sight: false, nav: true });
 }
-function flowerBed(x0, z0, x1, z1, y = 0.15) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.3, z1 - z0), [M.curb, M.curb, std({ map: rep(T.flowers, (x1 - x0) / 1.5, (z1 - z0) / 1.5), roughness: 0.9 }), M.curb, M.curb, M.curb]);
-  m.position.set((x0 + x1) / 2, y + 0.15, (z0 + z1) / 2); addMesh(m, { cast: false });
-  addCol(x0, x1, z0, z1, 0, y + 0.3, { sight: false, nav: true });
+// low flowering shrubs (red flowers on green, like the beds behind the black railings in the street view)
+function flowerBed(x0, z0, x1, z1, y = 0.15, hgt = 0.5) {
+  const top = std({ map: rep(T.flowers, (x1 - x0) / 1.5, (z1 - z0) / 1.5), roughness: 0.9 });
+  const sx = std({ map: rep(T.flowers, (z1 - z0) / 1.5, hgt / 1.5), roughness: 0.9 }), sz = std({ map: rep(T.flowers, (x1 - x0) / 1.5, hgt / 1.5), roughness: 0.9 });
+  const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, hgt, z1 - z0), [sx, sx, top, top, sz, sz]);
+  m.position.set((x0 + x1) / 2, y + hgt / 2, (z0 + z1) / 2); addMesh(m);
+  addCol(x0, x1, z0, z1, 0, y + hgt, { sight: false, nav: true });
 }
 function terraceSet(tx, tz, parasol = true, parCol = 0xf1ede4) {
   const alu = std({ color: 0xb8bcc0, metalness: 0.6, roughness: 0.4, env: 1 });
@@ -941,9 +944,22 @@ function avionLevel() {
   polySlab([[61.5, -23.5], [64, -23.5], [64, AV.capZ], [61.5, AV.capZ]], 0.15, side);
 
   // hedge block next to Villa & Nueva, grass strip and the park
-  box(2.6, 1.55, 14.2, std({ map: rep(T.hedge, 1.3, 7), roughness: 0.95 }), -25.5, 0.15, -5.3);
+  const hedgeM = std({ map: rep(T.hedge, 1.3, 1.2), roughness: 0.95 });
+  box(2.6, 2.3, 14.2, std({ map: rep(T.hedge, 1.3, 7), roughness: 0.95 }), -25.5, 0.15, -5.3);
   flowerBed(-26, 8.4, -9, 9.5); flowerBed(-6, 8.4, 4.5, 9.5);
   railing(-26, 8.3, -9, 8.3); railing(-6, 8.3, 4.5, 8.3);
+  // corner of the park on Av. de la Constitució (street view): flower beds along the road behind a black railing,
+  // a tall clipped hedge block and the 30 km/h sign
+  for (let x = -28.5; x < -6; x += 2) {
+    const e0 = AV.edge(x), e1 = AV.edge(x + 2);
+    flowerBed(x, Math.min(e0, e1) - 1.7, x + 2, Math.min(e0, e1) - 0.45);
+    railing(x, e0 - 0.3, x + 2, e1 - 0.3);
+  }
+  railing(-28.7, 8.3, -28.7, AV.edge(-28.7) - 0.3);
+  box(2.6, 2.5, 2.6, hedgeM, -25.6, 0.15, 10.2);
+  { const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.6, 8), M.metal); pole.position.set(-29.6, 1.3, 9.2); addMesh(pole);
+    const st = signTex(128, 128, (g, w, h) => { g.fillStyle = '#fff'; g.beginPath(); g.arc(64, 64, 62, 0, 7); g.fill(); g.strokeStyle = '#d0202a'; g.lineWidth = 14; g.beginPath(); g.arc(64, 64, 54, 0, 7); g.stroke(); g.fillStyle = '#111'; g.font = 'bold 56px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('30', 64, 68); });
+    const sg = new THREE.Mesh(new THREE.CircleGeometry(0.32, 24), new THREE.MeshStandardMaterial({ map: st, transparent: true, side: THREE.DoubleSide, roughness: 0.5 })); sg.position.set(-29.6, 2.35, 9.25); sg.rotation.y = Math.PI / 2 - AV.ang; scene.add(sg); }
   // tree pits in the park (dirt circles) are drawn with the trees; playground with green and red rubber
   const PG = AV.playground;
   { const rm = flat(T.rubber, PG.x0, PG.z0, PG.x1, PG.z1, 0.17, 2, { layer: 3, rough: 0.8 }).material; if (PB_rubber) { rm.normalMap = rep(PB_rubber.normalMap, 6, 5); rm.needsUpdate = true; } }
@@ -1044,7 +1060,7 @@ function avionLevel() {
   {
     const rz = (x) => W(x) + 5.5, ra = A_;
     const sc = new THREE.Mesh(new THREE.PlaneGeometry(260, 60).rotateX(-Math.PI / 2), PB_dirt ? pbr(PB_dirt, 260, 60, 3, { color: 0xc9b48e }) : std({ map: T.dirt }));
-    sc.position.set(10, 0.03, rz(10) - 2); sc.rotation.y = -ra; sc.receiveShadow = true; scene.add(sc);
+    sc.position.set(10 - 30.2 * Math.sin(ra), 0.03, W(10) + 30.2 * Math.cos(ra)); sc.rotation.y = -ra;   // starts at the wall, never over the road sc.receiveShadow = true; scene.add(sc);
     const bal = std({ color: 0x8b8378, roughness: 1 }), steel = std({ color: 0x5c4a3c, roughness: 0.5, metalness: 0.7, env: 1 });
     for (const off of [-2.1, 2.1]) {
       const b = new THREE.Mesh(new THREE.BoxGeometry(260, 0.25, 3.2), bal); b.position.set(10, 0.1, rz(10) + off); b.rotation.y = -ra; b.receiveShadow = true; scene.add(b);
@@ -1152,7 +1168,7 @@ function avionTrees() {
   const pit = (x, z, y = 0.155) => { const m = new THREE.Mesh(new THREE.CircleGeometry(0.75, 16).rotateX(-Math.PI / 2), std({ map: T.dirt, color: 0x8a7458, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 })); m.position.set(x, y, z); m.receiveShadow = true; scene.add(m); };
   // park: jacaranda and plane trees on the crowns visible in the orthophoto
   tree(-14, 11.5, 1.05, 'jacaranda', 0.15); pit(-14, 11.5);
-  for (const [x, z] of [[-5, 15.5], [3.5, 21.5], [-17, 14.5], [-24.5, 11], [14, 26], [31, 33], [41, 36], [22, 30]]) { tree(x + R(-0.3, 0.3), z + R(-0.3, 0.3), R(1.0, 1.2), 'plane', 0.15); pit(x, z); }
+  for (const [x, z] of [[-5, 15.5], [3.5, 21.5], [-17, 14.5], [-21.5, 12], [14, 26], [31, 33], [41, 36], [22, 30]]) { tree(x + R(-0.3, 0.3), z + R(-0.3, 0.3), R(1.0, 1.2), 'plane', 0.15); pit(x, z); }
   // trees between the parking spaces on both sides of the diagonal stretch
   for (const x of AV.treesN) { const z = zc(x); tree(x + sA * 5.75, z - cA * 5.75, R(0.95, 1.15), 'plane', 0); }
   for (const x of AV.treesS) { const z = zc(x); tree(x - sA * 5.75, z + cA * 5.75, R(1.0, 1.2), 'plane', 0); }
