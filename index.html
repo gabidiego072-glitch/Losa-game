@@ -184,9 +184,9 @@ const MAPS = {
   },
   avion: {
     title: 'PARQUE DEL AVIÓN', sub: 'XIRIVELLA · AV. DE LA CONSTITUCIÓ · PL. COMARE ROSARIO SOLER', street: 'Pl. de la Comare Rosario Soler',
-    ortho: 'assets/ortho_avion.jpg', nav: { x0: -46, z0: -30, w: 112, h: 92 }, map: { x0: -47, z0: -30, s: 1.55 },
-    spawns: [[-32, -22], [-32, -4], [-38, 9], [-18, -20.5], [2, -20.5], [24, -20.5], [44, -20.5], [54, -24], [54, 2], [54, 26], [54, 48], [30, 49], [8, 36], [-20, 19]],
-    pvp: [[-33, -14], [-32, 4], [-8, -20.5], [26, -8], [54, 30], [47, 46], [36, 20], [-16, 21.5], [-15.5, -6], [4, -6], [14, 39.5], [-4, 4]],
+    ortho: 'assets/ortho_avion.jpg', nav: { x0: -46, z0: -30, w: 163, h: 92 }, map: { x0: -48, z0: -36, s: 1.09 },
+    spawns: [[-32, -22], [-32, -4], [-38, 9], [-18, -20.5], [2, -20.5], [24, -20.5], [44, -20.5], [54, -24], [54, 2], [54, 26], [54, 48], [30, 49], [8, 36], [-20, 19], [100, 30], [70, -10], [112, 45], [90, -20.5]],
+    pvp: [[-33, -14], [-32, 4], [-8, -20.5], [26, -8], [54, 30], [47, 46], [36, 20], [-16, 21.5], [-15.5, -6], [4, -6], [14, 39.5], [-4, 4], [76, 40], [100, 18], [75, -8], [112, 48]],
     start: [26, 6, 2.2], coop: [[24, 3], [26, 4]], coopLook: [12, 14], vsA: [-33, -12], vsB: [54, 32],
     zone: { x: 12, z: 14.5, r: 4.5, name: 'el parque infantil' },
   },
@@ -702,7 +702,7 @@ const AV = {
   villa: { x0: -20.8, x1: -10.6, z0: -10.5, z1: -0.3, door: -13 },
   tot: { x0: -0.6, x1: 9.6, z0: -10.5, z1: -0.3, door: 6 },
   playground: { x0: 6, x1: 18, z0: 9.5, z1: 20 },
-  west: -42.5, east: 63.5, north: -26.6,
+  west: -42.5, east: 114.5, north: -26.6,
 };
 if (MAPID === 'avion') {   // textures only this map uses (built only when needed so map 1 keeps its random layout)
 T.paveGrey = makeTex(256, 256, (g, w, h) => {
@@ -723,8 +723,8 @@ T.hedge = makeTex(128, 128, (g, w, h) => {
 });
 T.flowers = makeTex(128, 128, (g, w, h) => {
   g.fillStyle = '#3f2f22'; g.fillRect(0, 0, w, h);
-  speckle(g, w, h, 1600, ['#3d6b2c', '#4f7d35', '#2e5422'], 2, 5);
-  speckle(g, w, h, 900, ['#d1202a', '#e2343a', '#b5141f', '#f05a4a'], 2, 4);
+  speckle(g, w, h, 5000, ['#3d6b2c', '#4f7d35', '#2e5422', '#5a8a3a'], 2, 5);
+  speckle(g, w, h, 700, ['#d1202a', '#e2343a', '#b5141f', '#f05a4a'], 2, 4);
 });
 T.brickFacade = facadeTex('#b8693f', '#e9e4da', true);
 T.brickFacade2 = facadeTex('#c27a4c', '#7c6a58', true);
@@ -936,7 +936,7 @@ function avionLevel() {
   if (PB_concrete) for (const k of ['map', 'normalMap', 'roughnessMap']) side[k].repeat.set(1 / 2.5, 1 / 2.5);
   polySlab([[-29, -17.5], [50.5, -17.5], [50.5, edge(50.5)], [0, edge(0)], [0, zc(0) - 3.25], [-29, zc(-29) - 3.25]], 0.15, plaza);
   polySlab([[-42.5, zc(-42.5) + 8.25], [xCap, zc(xCap) + 8.25], [xCap, W(xCap)], [-42.5, W(-42.5)]], 0.15, side);
-  polySlab([[-42.5, -26.6], [64, -26.6], [64, -23.5], [-42.5, -23.5]], 0.15, side);
+  polySlab([[-42.5, -26.6], [114.5, -26.6], [114.5, -23.5], [-42.5, -23.5]], 0.15, side);
   polySlab([[-42.5, -23.5], [-40.5, -23.5], [-40.5, 7], [-42.5, 7]], 0.15, side);
   polySlab([[61.5, -23.5], [64, -23.5], [64, AV.capZ], [61.5, AV.capZ]], 0.15, side);
 
@@ -969,8 +969,12 @@ function avionLevel() {
     }
   }
   // garden by Carrer del Guerrer de Moixent (OpenStreetMap park), raised bed with flowers and railing
-  flowerBed(29.5, 24, 40.5, 33.5); railing(29.4, 23.9, 40.6, 23.9); railing(29.4, 23.9, 29.4, 33.6); railing(40.6, 23.9, 40.6, 33.6);
-  flowerBed(41.5, 34.5, 46, 41.5);
+  { const grass = makeTex(128, 128, (g, w, h) => { g.fillStyle = '#5d7d3a'; g.fillRect(0, 0, w, h); speckle(g, w, h, 6000, ['#6b8c44', '#4f6e30', '#77984e', '#587a36'], 1, 2); });
+    for (const [x0, z0, x1, z1] of [[29.5, 24, 40.5, 33.5], [41.5, 34.5, 46, 41.5]]) {
+      flat(grass, x0, z0, x1, z1, 0.16, 2, { layer: 3, rough: 1 });
+      const hm = std({ map: rep(T.hedge, 2, 1), roughness: 0.95 });
+      box(x1 - x0, 0.55, 0.45, hm, (x0 + x1) / 2, 0.15, z0 + 0.22, { sight: false }); box(0.45, 0.55, z1 - z0, hm, x0 + 0.22, 0.15, (z0 + z1) / 2, { sight: false }); box(0.45, 0.55, z1 - z0, hm, x1 - 0.22, 0.15, (z0 + z1) / 2, { sight: false });
+    } }
 
   // ------------------------------------------------ buildings (OpenStreetMap footprints and storeys)
   const HA = blockAv(AV.A, 6, T.brickFacade, T.shopX, [AV.villa, AV.tot]);
@@ -987,14 +991,54 @@ function avionLevel() {
     st.position.set(-71.5, 2.75, -9.6); st.rotation.y = -0.46; addMesh(st);
     const sg = signTex(512, 64, (g, w, h) => { g.fillStyle = '#f4f4f0'; g.fillRect(0, 0, w, h); g.fillStyle = '#1c3f7a'; g.font = 'bold 36px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('XIRIVELLA - ALQUERIES', w / 2, h / 2 + 2); });
     const sm = new THREE.Mesh(new THREE.PlaneGeometry(8, 1), std({ map: sg, emissive: 0x333333 })); sm.position.set(-62.6, 4.2, -5.3); sm.rotation.y = -0.46 + Math.PI / 2; scene.add(sm); }
-  // IES Ramon Muntaner: sports court and school building, behind a tall fence
-  { const cm = flat(T.court, 64.5, 6, 108, 50, 0.02, 0, { layer: 2, rough: 0.9 }).material; cm.map.repeat.set(1, 1); }
-  blockAv({ x0: 66, x1: 104, z0: -22, z1: 2 }, 2, T.facadeB, T.shopX);
+  // park on the other side of Carrer del Guerrer de Moixent (measured on the orthophoto): two futsal pitches
+  // side by side, a sandy area with a row of trees, the white sports hall and a column of trees on the far side
   {
-    const fenceMat = new THREE.MeshStandardMaterial({ map: T.chain, alphaMap: T.chain, alphaTest: 0.35, side: THREE.DoubleSide, color: 0x6f9a6a, metalness: 0.5, roughness: 0.5 });
-    const L = 80, FH = 3.2, tex = T.chain.clone(); tex.repeat.set(L / 0.12, FH / 0.12); tex.needsUpdate = true; const mat = fenceMat.clone(); mat.map = tex; mat.alphaMap = tex;
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(L, FH), mat); p.position.set(AV.east + 0.3, FH / 2, 22); p.rotation.y = Math.PI / 2; scene.add(p);
-    for (let z = -18; z <= 62; z += 3) { const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, FH, 6), M.green); post.position.set(AV.east + 0.3, FH / 2, z); scene.add(post); }
+    const court = makeTex(880, 888, (g, w, h) => {   // 20 px per metre: x 65 … 109, z 6.8 … 51.2
+      g.fillStyle = '#bdbab2'; g.fillRect(0, 0, w, h);
+      speckle(g, w, h, 30000, ['#b3b0a8', '#c6c3bb', '#a9a69e'], 1, 2.5);
+      blotches(g, w, h, 30, 'rgba(70,65,55,0.10)', 30, 90);
+      g.strokeStyle = '#f2f2ec'; g.lineWidth = 3.5;
+      for (const ox of [0, 440]) {
+        const x0 = ox + 20, x1 = ox + 420, y0 = 20, y1 = h - 20, cx = (x0 + x1) / 2, cy = h / 2;
+        g.strokeRect(x0, y0, x1 - x0, y1 - y0);
+        g.beginPath(); g.moveTo(x0, cy); g.lineTo(x1, cy); g.stroke();
+        g.beginPath(); g.arc(cx, cy, 60, 0, Math.PI * 2); g.stroke();
+        g.beginPath(); g.arc(cx, y0, 120, 0, Math.PI); g.stroke();
+        g.beginPath(); g.arc(cx, y1, 120, Math.PI, Math.PI * 2); g.stroke();
+      }
+    });
+    court.wrapS = court.wrapT = THREE.ClampToEdgeWrapping;
+    const sand = PB_dirt ? pbr(PB_dirt, 1, 1, 1, { color: 0xe6d2a8 }) : std({ map: T.dirt });
+    if (PB_dirt) for (const k of ['map', 'normalMap', 'roughnessMap']) sand[k].repeat.set(1 / 3, 1 / 3);
+    const pave = PB_concrete ? pbr(PB_concrete, 1, 1, 1, { color: new THREE.Color().setRGB(1.3, 1.28, 1.24) }) : std({ map: T.concrete });
+    if (PB_concrete) for (const k of ['map', 'normalMap', 'roughnessMap']) pave[k].repeat.set(1 / 3, 1 / 3);
+    polySlab([[64, -17.5], [86.6, -17.5], [86.6, 6.8], [64, 6.8]], 0.15, sand);
+    polySlab([[86.6, -17.5], [114.5, -17.5], [114.5, 6.8], [86.6, 6.8]], 0.15, pave);
+    polySlab([[64, 6.8], [114.5, 6.8], [114.5, 52], [64, 52]], 0.15, pave);
+    { const m = flat(court, 65, 6.8, 109, 51.2, 0.152, 0, { layer: 3, rough: 0.9 }); m.material.map.repeat.set(1, 1); if (PB_concrete) { m.material.normalMap = rep(PB_concrete.normalMap, 14, 14); m.material.needsUpdate = true; } }
+    // futsal goals at both ends of both pitches
+    const goal = (gx, z, dir) => {
+      const g = new THREE.Group(), pm = M.white;
+      const p1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 2, 8), pm); p1.position.set(-1.5, 1, 0);
+      const p2 = p1.clone(); p2.position.x = 1.5;
+      const cb = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3.1, 8), pm); cb.rotation.z = Math.PI / 2; cb.position.y = 2;
+      const nt = T.chain.clone(); nt.repeat.set(30, 20); nt.needsUpdate = true;
+      const nm = new THREE.MeshStandardMaterial({ map: nt, alphaMap: nt, alphaTest: 0.35, side: THREE.DoubleSide, color: 0xffffff });
+      const back = new THREE.Mesh(new THREE.PlaneGeometry(3, 2), nm); back.position.set(0, 1, -1);
+      const s1 = new THREE.Mesh(new THREE.PlaneGeometry(1, 2), nm); s1.rotation.y = Math.PI / 2; s1.position.set(-1.5, 1, -0.5);
+      const s2 = s1.clone(); s2.position.x = 1.5;
+      g.add(p1, p2, cb, back, s1, s2); g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+      g.position.set(gx, 0.15, z); g.rotation.y = dir; scene.add(g);
+      const zz = z - Math.cos(dir) * 0.5; addCol(gx - 1.6, gx + 1.6, zz - 0.55, zz + 0.55, 0, 2.1, { sight: false, nav: true });
+    };
+    for (const gx of [76, 98]) { goal(gx, 8.3, 0); goal(gx, 49.7, Math.PI); }
+    // white sports hall (ribbed sheet walls, roof from the photo)
+    const hallTex = makeTex(256, 256, (g, w, h) => { g.fillStyle = '#ecebe6'; g.fillRect(0, 0, w, h); for (let x = 0; x < w; x += 8) { g.fillStyle = 'rgba(0,0,0,.07)'; g.fillRect(x, 0, 2, h); g.fillStyle = 'rgba(255,255,255,.2)'; g.fillRect(x + 3, 0, 1, h); } g.fillStyle = '#b9b7b0'; g.fillRect(0, 230, w, 26); blotches(g, w, h, 5, 'rgba(90,80,70,0.08)', 20, 60); });
+    const hm = (n) => std({ map: rep(hallTex, n / 8, 1), normalMap: rep(T.warehouseN, n / 8, 1), normalScale: new THREE.Vector2(0.6, 0.6), color: 0xf4f4f0, roughness: 0.6, metalness: 0.2, envMapIntensity: 0.8 });
+    const hall = new THREE.Mesh(new THREE.BoxGeometry(26.7, 9, 21.6), [hm(21.6), hm(21.6), M.roof, M.roof, hm(26.7), hm(26.7)]);
+    hall.position.set(99.95, 4.5, -4.6); addMesh(hall); addCol(86.6, 113.3, -15.4, 6.2, 0, 9);
+    orthoRoof(86.6, -15.4, 113.3, 6.2, 9.02);
   }
   // railway: scrubland, two tracks and catenary posts beyond a low wall
   {
@@ -1015,12 +1059,12 @@ function avionLevel() {
     const wl = new THREE.Mesh(new THREE.BoxGeometry(L, 1.0, 0.3), wallM); wl.position.set((x0 + x1) / 2, 0.5, (zz0 + zz1) / 2 + 0.15); wl.rotation.y = -A_; addMesh(wl);
     for (let x = x0; x < x1; x += 2.4) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.2, 0.05), railM); p.position.set(x, 1.6, W(x) + 0.15); scene.add(p); }
     for (const yy of [1.1, 2.15]) { const r = new THREE.Mesh(new THREE.BoxGeometry(L, 0.05, 0.05), railM); r.position.set((x0 + x1) / 2, yy, (zz0 + zz1) / 2 + 0.15); r.rotation.y = -A_; scene.add(r); }
-    for (let x = -46; x < 66; x++) { const z = Math.min(AV.capZ, W(x + 0.5)); addCol(x, x + 1, z, z + 3, 0, 50, { sight: false }); }
+    for (let x = -46; x < 117; x++) { const z = Math.min(AV.capZ, W(x + 0.5)); addCol(x, x + 1, z, z + 3, 0, 50, { sight: false }); }
     // concrete planters where the area ends on the south-east (the roundabout beyond is out of bounds)
-    for (let x = xCap + 2; x < 64; x += 3.2) box(1.2, 0.7, 1.2, std({ color: 0xb9b4aa, roughness: 0.95 }), x, x > 50.5 && x < 57.5 ? 0 : 0.15, AV.capZ + 0.4, { col: false });
+    for (let x = xCap + 2; x < 114; x += 3.2) box(1.2, 0.7, 1.2, std({ color: 0xb9b4aa, roughness: 0.95 }), x, x > 50.5 && x < 57.5 ? 0 : 0.15, AV.capZ + 0.4, { col: false });
     addCol(AV.west - 2, AV.west, -40, 30, 0, 50, { sight: false });
     addCol(AV.east, AV.east + 2, -40, 80, 0, 50, { sight: false });
-    addCol(-60, 80, AV.north - 2, AV.north, 0, 50, { sight: false });
+    addCol(-60, 130, AV.north - 2, AV.north, 0, 50, { sight: false });
     box(0.3, 0.9, 33, wallM, AV.west - 0.15, 0.15, -9.5, { col: false });
   }
 
@@ -1115,6 +1159,9 @@ function avionTrees() {
   // column of trees on the west pavement of Carrer del Guerrer de Moixent, and the row along the school fence
   for (const z of [-2, 7, 17, 27, 37]) { tree(48 + R(-0.2, 0.2), z, R(0.95, 1.1), 'plane', 0.15); pit(48, z); }
   for (const z of [-12, -3, 6.7, 14, 25, 33.7, 41.8, 49.8]) tree(62.6, z, R(0.75, 0.9), 'leafy', 0.15);
+  // the park across Guerrer de Moixent: row of trees on the sand and a column beside the pitches
+  for (const x of [66, 69.5, 73, 76.5, 80, 83.5]) tree(x + R(-0.2, 0.2), -0.8, R(0.8, 0.95), 'leafy', 0.15);
+  for (const z of [9, 14, 19, 24, 28.5]) tree(111.4, z, R(0.85, 1.0), 'leafy', 0.15);
   // jacaranda garden by the station
   for (const [x, z] of [[-50, -14], [-47, -6], [-53, 0], [-48, 6], [-56, -8]]) tree(x, z, R(1.0, 1.2), rnd() < 0.6 ? 'jacaranda' : 'leafy', 0.02);
   for (const [x, z] of [[-30, -40], [-35, -32], [26, -40], [26, -30.5], [-27, -30]]) tree(x, z, R(0.9, 1.1), 'leafy', 0.15);
@@ -1123,7 +1170,8 @@ function avionTrees() {
 function avionProps() {
   const zc = AV.zc, A_ = AV.ang, sA = Math.sin(A_), cA = Math.cos(A_);
   // benches facing the playground and along the plaza, lamps, bins and recycling containers
-  for (const [x, z, r] of [[-11, 13.5, -0.4], [-2, 12, -0.2], [3.2, 13.5, Math.PI / 2], [20, 12.5, -Math.PI / 2], [20, 17, -Math.PI / 2], [26, 10, Math.PI], [26, 20, 0], [36, 18, Math.PI]]) bench(x, z, r);
+  for (const [x, z, r] of [[-11, 13.5, -0.4], [-2, 12, -0.2], [3.2, 13.5, Math.PI / 2], [20, 12.5, -Math.PI / 2], [20, 17, -Math.PI / 2], [26, 10, Math.PI], [26, 20, 0], [36, 18, Math.PI], [68, 3.5, Math.PI], [74, 3.5, Math.PI], [80, 3.5, Math.PI], [111.5, 34, -Math.PI / 2], [111.5, 40, -Math.PI / 2]]) bench(x, z, r);
+  for (const [x, z] of [[85, -14], [111, 12], [70, 52.5], [100, 52.5]]) lamp(x, z);
   for (const [x, z] of [[-27.5, 4], [-8, 7.5], [11, 7.5], [24, -14], [24, 6], [24, 26], [36.5, 20], [48.6, 12], [48.6, 32], [-41.5, -12], [-41.5, 4], [62.8, 0], [62.8, 30]]) lamp(x, z);
   for (let x = -20; x <= 40; x += 15) { const d = x >= 0 ? 9.2 : 4.2; lamp(x + sA * d, zc(x) - cA * d); }
   for (const [x, z] of [[-9.5, 7.6], [19, 7.8], [29, -16.6], [46.5, 20]]) {
@@ -1143,6 +1191,8 @@ function avionProps() {
     if (rnd() > 0.75 || AV.treesS.some(tx => Math.abs(tx - x) < 1.6)) continue;
     const z = zc(x); car(x - sA * 5.75, z + cA * 5.75, -(Math.PI / 2 + A_) + (rnd() < 0.5 ? 0 : Math.PI), rnd() < 0.1 ? 'van' : 'car');
   }
+  for (let x = 66; x < 112; x += 5.4) if (rnd() < 0.7) car(x, -19.4, rnd() < 0.5 ? 0 : Math.PI, rnd() < 0.12 ? 'van' : 'car');
+  for (let x = 66; x < 110; x += 6) if (rnd() < 0.45) car(x, 55.5, rnd() < 0.5 ? 0 : Math.PI);
   for (let z = -15.4; z < 54; z += 3.3) if (rnd() < 0.75) car(59.4, z - 1.5, rnd() < 0.5 ? Math.PI / 4 : -3 * Math.PI / 4, rnd() < 0.12 ? 'van' : 'car');
   for (let x = -26; x < 45; x += 5.6) { if (Math.abs(x - 26) < 5) continue; if (rnd() < 0.55) car(x, -22.4, 0, rnd() < 0.15 ? 'van' : 'car'); if (rnd() < 0.45 && x > -20) car(x + 1.5, -18.6, Math.PI); }
 }
@@ -2451,6 +2501,9 @@ function streetName() {
     if (z > AV.edge(x) - 0.2) return 'Av. de la Constitució';
     if (z > -23.5 && z < -17.5) return 'Carrer de Carmen Estellés';
     if (x > 50.5 && x < 57.5) return 'Carrer del Guerrer de Moixent';
+    if (x > 64 && z > 6.8 && z < 52) return 'Pistas de fútbol sala del parque';
+    if (x > 64 && x < 86.6 && z > -17.5 && z < 6.8) return 'Parque (zona de arena)';
+    if (x > 64 && z < 6.8 && z > -17.5) return 'Pabellón deportivo';
     if (inR(AV.playground)) return 'Parque infantil';
     if (z > 8 && x < 24) return 'Parque del Avión';
     return 'Pl. de la Comare Rosario Soler';
