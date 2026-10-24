@@ -36,13 +36,28 @@ Empiezas con 2 granadas y 2 flashes; las cajas de munición y cada oleada supera
 Sobrevive a oleadas de enemigos cada vez más numerosos y precisos. Usa los coches, los troncos y
 los edificios como cobertura. Los enemigos dejan botiquines y munición al caer.
 
-## Dos jugadores (1 contra 1 o cooperativo)
+## Mapas
+
+En el menú hay un selector de mapa:
+
+- **Plaza Llanera**: la pista de fútbol La Losa, el parque y los bares de la fachada.
+- **Parque del Avión** (Av. de la Constitució 22 / Pl. de la Comare Rosario Soler): los dos bloques de ladrillo, el parque infantil, los plátanos y la jacaranda, los aparcamientos de la avenida y el muro de las vías. Los dos bares de la planta baja se pueden visitar por dentro:
+  - **Villa & Nueva** (grill y bar): barra de madera, botellero, grifos, parrilla de carbón con campana, tele con el fútbol y terraza con parasol grande.
+  - **Tot per l'aire** (cervecería artesana): barra, seis grifos, depósitos de fermentación, pizarra con las cervezas, hélice en la pared y una avioneta colgada del techo, y terraza con cinco sombrillas.
+
+  El trazado sale de OpenStreetMap y de la ortofoto PNOA. El interior y los letreros de los bares son una recreación: no había fotos de dentro.
+
+## Dos jugadores (1 contra 1, táctico o cooperativo)
 
 En la pantalla de inicio, en **DOS JUGADORES**:
 
 1. Uno elige el modo (**Cooperativo**: los dos contra las oleadas · **1 contra 1**: gana el primero en llegar a 10 bajas) y pulsa **CREAR PARTIDA**. Sale un código de 4 letras y un enlace.
 2. El otro escribe el código y pulsa **UNIRSE** (o abre el enlace directamente).
 3. Cuando aparezca «¡Tu amigo se ha unido!», el anfitrión pulsa **EMPEZAR**.
+
+**Táctico 1 contra 1**: rondas y una sola vida por ronda. Gana la partida el primero en llegar a 5 rondas. Al empezar cada ronda tienes 6 segundos quieto para elegir arma. No te curas, solo tienes un cargador de repuesto por arma y 1 granada y 1 flash. Al rival no se le ve nunca en el minimapa, pero se oyen sus pasos si anda o corre (agachado o apuntando no hace ruido). Una ronda se gana de tres maneras: eliminando al rival, quedándote solo 8 segundos dentro de la zona marcada (el parque infantil o la mesa de ping-pong), o, si se acaban los 100 segundos, teniendo más salud. Los lados se cambian cada ronda.
+
+Si tu amigo tiene abierto otro mapa, al unirse cambia solo al mapa del anfitrión.
 
 Funciona navegador a navegador (WebRTC con PeerJS): no hace falta servidor propio. El ordenador del anfitrión controla a los enemigos. En cooperativo, si caes reapareces al empezar la siguiente oleada; si caéis los dos, se acaba. En 1 contra 1 reapareces a los 3 segundos lejos del rival y la invencibilidad está desactivada.
 

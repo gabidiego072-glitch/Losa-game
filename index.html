@@ -51,8 +51,9 @@
   #street{left:16px;top:16px;background:var(--panel);padding:10px 14px;border-radius:8px;max-width:calc(100vw - 230px)}
   #street b{font-size:18px;display:block}
   #street span{font-size:14px;color:var(--muted)}
-  .ov{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  .ov{position:fixed;inset:0;display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;
     background:rgba(8,10,12,.62);backdrop-filter:blur(3px);padding:16px}
+  .ov .card{margin:auto 0}
   .card{background:var(--panel);border:1px solid rgba(255,255,255,.12);border-radius:12px;padding:28px 30px;
     max-width:560px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.5)}
   .card h1{margin:0;font-size:clamp(34px,6vw,54px);letter-spacing:.06em;line-height:1}
@@ -121,8 +122,9 @@
 
 <div class="ov" id="startOv">
   <div class="card">
-    <h1>PLAZA LLANERA</h1>
-    <h2>XIRIVELLA · CARRER LES OLIVERES · LES MORERES · ELS GARROFERS</h2>
+    <h1 id="mapTitle">PLAZA LLANERA</h1>
+    <h2 id="mapSub">XIRIVELLA · CARRER LES OLIVERES · LES MORERES · ELS GARROFERS</h2>
+    <div class="qrow"><label for="mapSel">Mapa</label><select id="mapSel"><option value="llanera">Plaza Llanera · pista de La Losa</option><option value="avion">Parque del Avión · Av. de la Constitució (bares con interior)</option></select></div>
     <div class="keys">
       <span><kbd>W A S D</kbd></span><span>Moverse</span>
       <span><kbd>Ratón</kbd></span><span>Apuntar · <b>Clic izq.</b> disparar · <b>Clic der.</b> mirilla</span>
@@ -141,7 +143,7 @@
     <button id="playBtn" disabled>CARGANDO…</button>
     <div class="mp">
       <div class="mptitle">DOS JUGADORES</div>
-      <div class="mprow"><select id="mpMode"><option value="coop">Cooperativo · 2 contra las oleadas</option><option value="pvp">1 contra 1 · primero a 10 bajas</option></select><button id="hostBtn" class="sec">CREAR PARTIDA</button></div>
+      <div class="mprow"><select id="mpMode"><option value="coop">Cooperativo · 2 contra las oleadas</option><option value="pvp">1 contra 1 · primero a 10 bajas</option><option value="tac">Táctico 1 contra 1 · rondas, una vida</option></select><button id="hostBtn" class="sec">CREAR PARTIDA</button></div>
       <div class="mprow"><input id="joinCode" placeholder="CÓDIGO" maxlength="4" autocomplete="off" spellcheck="false"><button id="joinBtn" class="sec">UNIRSE</button></div>
       <div id="mpStatus"></div>
       <button id="cancelMp" class="sec" style="display:none;margin-top:6px">CANCELAR Y JUGAR SOLO</button>
@@ -168,6 +170,29 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { computeBoundsTree, acceleratedRaycast } from 'https://unpkg.com/three-mesh-bvh@0.7.6/build/index.module.js';
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
+
+// ============================================================ maps
+// Two real places in Xirivella. Each one is built from OpenStreetMap + the IGN PNOA orthophoto, in metres.
+const MAPS = {
+  llanera: {
+    title: 'PLAZA LLANERA', sub: 'XIRIVELLA · CARRER LES OLIVERES · LES MORERES · ELS GARROFERS', street: 'Plaza Marqués Llanera',
+    ortho: 'assets/ortho.jpg', nav: { x0: -40, z0: -56, w: 105, h: 110 }, map: { x0: -42, z0: -58, s: 1.55 },
+    spawns: [[-29, -49], [-29, -20], [-29, 12], [-29, 46], [54.3, -49], [54.3, -20], [54.3, 10], [54.3, 46], [-34, 41.5], [0, 41.5], [30, 41.5], [61, 41.5], [5, -48], [30, -48]],
+    pvp: [[-9, 27], [-9, -15], [30, -24], [25, 26.5], [42, -12], [-23, -28], [10, 38], [44, 20]],
+    start: [16, -12, 2.6], coop: [[16, -12], [18.5, -10]], coopLook: [8, 8], vsA: [-9, 27], vsB: [30, -24],
+    zone: { x: 18.7, z: 8.35, r: 4.5, name: 'la mesa de ping-pong' },
+  },
+  avion: {
+    title: 'PARQUE DEL AVIÓN', sub: 'XIRIVELLA · AV. DE LA CONSTITUCIÓ · PL. COMARE ROSARIO SOLER', street: 'Pl. de la Comare Rosario Soler',
+    ortho: 'assets/ortho_avion.jpg', nav: { x0: -46, z0: -30, w: 112, h: 92 }, map: { x0: -47, z0: -30, s: 1.55 },
+    spawns: [[-32, -22], [-32, -4], [-38, 9], [-18, -20.5], [2, -20.5], [24, -20.5], [44, -20.5], [54, -24], [54, 2], [54, 26], [54, 48], [30, 49], [8, 36], [-20, 19]],
+    pvp: [[-33, -14], [-32, 4], [-8, -20.5], [26, -8], [54, 30], [47, 46], [36, 20], [-16, 21.5], [-15.5, -6], [4, -6], [14, 39.5], [-4, 4]],
+    start: [26, 6, 2.2], coop: [[24, 3], [26, 4]], coopLook: [12, 14], vsA: [-33, -12], vsB: [54, 32],
+    zone: { x: 12, z: 14.5, r: 4.5, name: 'el parque infantil' },
+  },
+};
+const MAPID = new URLSearchParams(location.search).get('map') === 'avion' ? 'avion' : 'llanera';
+const MC = MAPS[MAPID];
 
 // ============================================================ setup
 const canvas = document.getElementById('game');
@@ -223,7 +248,7 @@ const [PB_asphalt, PB_concrete, PB_dirt, PB_bark, PB_plaster, PB_rubber, HDR, GL
   loadBinary(new RGBELoader(manager).setDataType(THREE.HalfFloatType), 'assets/sky.hdr').catch(() => null),
   loadBinary(new GLTFLoader(manager), 'assets/soldier.glb').catch(() => null),
   // IGN PNOA orthophoto of the area (CC BY 4.0), already rotated to the game axes, covering x,z in [-130, 130]
-  texLoader.loadAsync('assets/ortho.jpg').catch(() => null),
+  texLoader.loadAsync(MC.ortho).catch(() => null),
 ]);
 if (ORTHO) { ORTHO.colorSpace = THREE.SRGBColorSpace; ORTHO.anisotropy = MAXANISO; }
 // real 3D models (Poly Haven CC0, OpenGameArt CC0 / CC-BY 3.0), pre-processed to metres and -Z forward
@@ -370,11 +395,14 @@ T.chain = (() => {
   g.beginPath(); g.moveTo(0, 0); g.lineTo(64, 64); g.moveTo(64, 0); g.lineTo(0, 64); g.stroke();
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = MAXANISO; return t;
 })();
-function facadeTex(wall, shut) {
+function facadeTex(wall, shut, brick = false) {
   const rc = document.createElement('canvas'); rc.width = 512; rc.height = 384; const rg = rc.getContext('2d');
   rg.fillStyle = '#e6e6e6'; rg.fillRect(0, 0, 512, 384);
   const t = makeTex(512, 384, (g, w, h) => {
     g.fillStyle = wall; g.fillRect(0, 0, w, h);
+    if (brick) {   // orange face brick: courses of 6.5 cm, stretcher bond
+      for (let y = 0; y < h; y += 4) { const o = ((y / 4) & 1) ? 0 : 5; for (let x = -o; x < w; x += 10) { g.fillStyle = `rgba(${rnd() < 0.5 ? '90,30,10' : '255,200,160'},${0.04 + rnd() * 0.1})`; g.fillRect(x, y, 9, 3); } g.fillStyle = 'rgba(235,220,200,0.28)'; g.fillRect(0, y + 3, w, 1); }
+    }
     speckle(g, w, h, 5000, ['rgba(0,0,0,0.05)', 'rgba(255,255,255,0.07)'], 1, 3);
     blotches(g, w, h, 8, 'rgba(60,40,20,0.08)', 30, 80);
     for (let f = 0; f < 2; f++) for (let b = 0; b < 4; b++) {
@@ -479,13 +507,13 @@ function foliageTex(kind) {
   } else {
     for (let n = 0; n < 420; n++) {
       const a0 = rnd() * Math.PI * 2, r0 = Math.sqrt(rnd()) * 105, x = 128 + Math.cos(a0) * r0, y = 128 + Math.sin(a0) * r0;
-      g.fillStyle = `hsl(${80 + rnd() * 30},${35 + rnd() * 25}%,${18 + rnd() * 24}%)`;
+      g.fillStyle = kind === 'blossom' ? (rnd() < 0.25 ? `hsl(${95 + rnd() * 20},30%,${22 + rnd() * 15}%)` : `hsl(${262 + rnd() * 22},${40 + rnd() * 20}%,${48 + rnd() * 22}%)`) : `hsl(${80 + rnd() * 30},${35 + rnd() * 25}%,${18 + rnd() * 24}%)`;
       g.beginPath(); g.ellipse(x, y, 4 + rnd() * 4, 2 + rnd() * 2, rnd() * 3.14, 0, 7); g.fill();
     }
   }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = MAXANISO; return t;
 }
-T.needles = foliageTex('pine'); T.leaves = foliageTex('leafy');
+T.needles = foliageTex('pine'); T.leaves = foliageTex('leafy'); T.blossom = foliageTex('blossom');
 T.roof = makeTex(128, 128, (g, w, h) => { g.fillStyle = '#8d8a85'; g.fillRect(0, 0, w, h); speckle(g, w, h, 3000, ['#7c7a76', '#9e9b95', '#6b6965'], 1, 2.5); });
 T.flash = (() => {
   const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
@@ -658,6 +686,467 @@ function barFront(xc, line1, line2, signCol, awnCol, tables, FZ = -46, W = 10) {
   }
 }
 
+// ============================================================ MAP 2: PARQUE DEL AVIÓN (Av. de la Constitució 22, Xirivella)
+// Measured from OpenStreetMap and the IGN PNOA orthophoto, rotated so the 7-storey block with the two bars
+// runs along x. Block A (bars): x -21 … 21, z -15.2 … -0.3 (south facade at z = -0.3, facing the park).
+// Av. de la Constitució comes down at x ≈ -32 and turns south-east along the railway wall W(x); from the wall:
+// 1.5 m pavement, 5 m of parking under trees, 6.5 m of road (centre line zc), and on the park side a second
+// row of parking (only east of x = 0, west of it the park reaches the road).
+const AV = {
+  W: (x) => 16.9 + (x + 40) * 0.601,
+  zc: (x) => 7.15 + (x + 40) * 0.601,
+  edge: (x) => 7.15 + (x + 40) * 0.601 - (x >= 0 ? 8.25 : 3.25),
+  ang: Math.atan(0.601), capZ: 58, treesN: [5.2, 18.2, 31.2, 44.2], treesS: [-31.6, -21.2, -10.8, -0.4, 10, 20.4],
+  A: { x0: -21, x1: 21, z0: -15.2, z1: -0.3 },
+  C: { x0: 31, x1: 46, z0: -15, z1: 15 },
+  villa: { x0: -20.8, x1: -10.6, z0: -10.5, z1: -0.3, door: -13 },
+  tot: { x0: -0.6, x1: 9.6, z0: -10.5, z1: -0.3, door: 6 },
+  playground: { x0: 6, x1: 18, z0: 9.5, z1: 20 },
+  west: -42.5, east: 63.5, north: -26.6,
+};
+if (MAPID === 'avion') {   // textures only this map uses (built only when needed so map 1 keeps its random layout)
+T.paveGrey = makeTex(256, 256, (g, w, h) => {
+  g.fillStyle = '#bdbab3'; g.fillRect(0, 0, w, h);
+  speckle(g, w, h, 6000, ['#b3b0a9', '#c8c5be', '#a9a69f'], 1, 2);
+  blotches(g, w, h, 8, 'rgba(70,65,55,0.10)', 15, 45);
+  g.strokeStyle = 'rgba(95,90,80,.45)'; g.lineWidth = 1.2;
+  for (let p = 0; p <= w; p += 64) { g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke(); g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke(); }
+});
+T.paveGreyN = heightToNormal(256, 256, (g, w, h) => {
+  g.fillStyle = '#c8c8c8'; g.fillRect(0, 0, w, h); g.fillStyle = '#5a5a5a';
+  for (let p = 0; p <= w; p += 64) { g.fillRect(p - 1, 0, 2, h); g.fillRect(0, p - 1, w, 2); }
+  speckle(g, w, h, 3000, ['#bdbdbd', '#d2d2d2'], 1, 2);
+}, 3);
+T.hedge = makeTex(128, 128, (g, w, h) => {
+  g.fillStyle = '#2f4a22'; g.fillRect(0, 0, w, h);
+  speckle(g, w, h, 5000, ['#3d5e2a', '#4b7033', '#263d1b', '#5a8040'], 1, 3);
+});
+T.flowers = makeTex(128, 128, (g, w, h) => {
+  g.fillStyle = '#3f2f22'; g.fillRect(0, 0, w, h);
+  speckle(g, w, h, 1600, ['#3d6b2c', '#4f7d35', '#2e5422'], 2, 5);
+  speckle(g, w, h, 900, ['#d1202a', '#e2343a', '#b5141f', '#f05a4a'], 2, 4);
+});
+T.brickFacade = facadeTex('#b8693f', '#e9e4da', true);
+T.brickFacade2 = facadeTex('#c27a4c', '#7c6a58', true);
+T.shopA2 = shopTex(['', 'XIRIGUAU']);
+T.shopC2 = shopTex(['FARMÀCIA ÒPTICA', 'CORMAR FOTÒGRAFS']);
+T.shopB2 = shopTex(['NÓMADA', 'ESCOLA DE MESTRES']);
+T.shopX = shopTex(['', '']);
+}
+
+// extruded flat polygon (pts in x,z) raised h above the street, with stepped colliders 1 m wide
+function polySlab(pts, h, top, side = M.curb) {
+  const s = new THREE.Shape(); s.moveTo(pts[0][0], -pts[0][1]); for (let i = 1; i < pts.length; i++) s.lineTo(pts[i][0], -pts[i][1]); s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: h, bevelEnabled: false }); g.rotateX(-Math.PI / 2);
+  const m = new THREE.Mesh(g, [top, side]); addMesh(m, { cast: false });
+  const xs = pts.map(p => p[0]), x0 = Math.floor(Math.min(...xs)), x1 = Math.ceil(Math.max(...xs));
+  for (let x = x0; x < x1; x++) {
+    const X = x + 0.5; let zmin = Infinity, zmax = -Infinity;
+    for (let i = 0; i < pts.length; i++) {
+      const [ax, az] = pts[i], [bx, bz] = pts[(i + 1) % pts.length];
+      if ((X - ax) * (X - bx) > 0 || ax === bx) continue;
+      const z = az + (bz - az) * (X - ax) / (bx - ax); zmin = Math.min(zmin, z); zmax = Math.max(zmax, z);
+    }
+    if (zmax > zmin) addCol(x, x + 1, zmin, zmax, 0, h, { sight: false, nav: false });
+  }
+  return m;
+}
+function paveMat(tex, normal, tile, color = 0xffffff) {
+  const m = std({ map: rep(tex, 1 / tile, 1 / tile), roughness: 0.85, envMapIntensity: 0.6, color });
+  if (normal) { m.normalMap = rep(normal, 1 / tile, 1 / tile); }
+  return m;
+}
+// low black railing like the ones around the flower beds in the park
+const railM = std({ color: 0x1d1f21, roughness: 0.45, metalness: 0.6, env: 1 });
+function railing(x0, z0, x1, z1, y = 0.15, hgt = 0.75) {
+  const L = Math.hypot(x1 - x0, z1 - z0), a = Math.atan2(-(z1 - z0), x1 - x0);
+  for (const yy of [hgt, 0.12]) { const r = new THREE.Mesh(new THREE.BoxGeometry(L, 0.04, 0.04), railM); r.position.set((x0 + x1) / 2, y + yy, (z0 + z1) / 2); r.rotation.y = a; r.castShadow = true; scene.add(r); }
+  const n = Math.max(1, Math.round(L / 0.14));
+  for (let i = 0; i <= n; i++) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.02, hgt, 0.02), railM); p.position.set(x0 + (x1 - x0) * i / n, y + hgt / 2, z0 + (z1 - z0) * i / n); scene.add(p); }
+  const t = 0.06; addCol(Math.min(x0, x1) - t, Math.max(x0, x1) + t, Math.min(z0, z1) - t, Math.max(z0, z1) + t, 0, y + hgt, { sight: false, nav: true });
+}
+function flowerBed(x0, z0, x1, z1, y = 0.15) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, 0.3, z1 - z0), [M.curb, M.curb, std({ map: rep(T.flowers, (x1 - x0) / 1.5, (z1 - z0) / 1.5), roughness: 0.9 }), M.curb, M.curb, M.curb]);
+  m.position.set((x0 + x1) / 2, y + 0.15, (z0 + z1) / 2); addMesh(m, { cast: false });
+  addCol(x0, x1, z0, z1, 0, y + 0.3, { sight: false, nav: true });
+}
+function terraceSet(tx, tz, parasol = true, parCol = 0xf1ede4) {
+  const alu = std({ color: 0xb8bcc0, metalness: 0.6, roughness: 0.4, env: 1 });
+  if (MODELS.terrace) {
+    for (const [dx, ry] of [[-0.55, 0.15], [0.6, -0.1]]) { const t = MODELS.terrace.clone(true); t.position.set(tx + dx, 0.15, tz); t.rotation.y = ry + (rnd() - 0.5) * 0.3; scene.add(t); t.traverse(o => { if (o.isMesh) { o.castShadow = false; shootables.push(o); } }); }
+  } else {
+    box(0.8, 0.75, 0.8, alu, tx, 0.15, tz, { col: false });
+  }
+  addCol(tx - 1.0, tx + 1.0, tz - 0.45, tz + 0.45, 0, 0.9, { sight: false, nav: true });
+  if (parasol) {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 2.4, 6), alu); pole.position.set(tx, 1.35, tz); addMesh(pole);
+    const um = new THREE.Mesh(new THREE.ConeGeometry(1.45, 0.45, 8, 1, true), std({ color: parCol, roughness: 0.8, side: THREE.DoubleSide })); um.position.set(tx, 2.55, tz); addMesh(um, { shoot: false });
+  }
+}
+// apartment block; `rooms` are hollow parts of the ground floor (bars you can walk into), touching the south facade
+function blockAv(B, floors, fac, shop, rooms = [], ceilCol = 0xece8e0) {
+  const { x0, z0, x1, z1 } = B, w = x1 - x0, d = z1 - z0, GH = 3.6, FH = 3, H = GH + floors * FH;
+  const sx = (n) => std({ map: rep(shop, n / 14, 1) });
+  const ceil = std({ color: ceilCol, roughness: 0.9 });
+  const gbox = (a0, b0, a1, b1) => {
+    const ww = a1 - a0, dd = b1 - b0; if (ww <= 0.01 || dd <= 0.01) return;
+    const g = new THREE.Mesh(new THREE.BoxGeometry(ww, GH, dd), [sx(dd), sx(dd), M.roof, M.roof, sx(ww), sx(ww)]);
+    g.position.set((a0 + a1) / 2, GH / 2, (b0 + b1) / 2); addMesh(g); addCol(a0, a1, b0, b1, 0, GH);
+  };
+  if (!rooms.length) gbox(x0, z0, x1, z1);
+  else {
+    const zr = Math.min(...rooms.map(r => r.z0)); gbox(x0, z0, x1, zr);
+    let cx = x0; for (const r of [...rooms].sort((a, b) => a.x0 - b.x0)) { gbox(cx, zr, r.x0, z1); cx = r.x1; } gbox(cx, zr, x1, z1);
+  }
+  const fx = (n) => { const m = std({ map: rep(fac, n / 14, floors / 2), roughnessMap: rep(fac.userData.rough, n / 14, floors / 2), roughness: 1, envMapIntensity: 0.99 });
+    if (PB_plaster) { m.normalMap = rep(PB_plaster.normalMap, n / 2.5, floors * 3 / 2.5); m.normalScale.set(0.5, 0.5); } return m; };
+  const u = new THREE.Mesh(new THREE.BoxGeometry(w, floors * FH, d), [fx(d), fx(d), M.roof, ceil, fx(w), fx(w)]);
+  u.position.set((x0 + x1) / 2, GH + floors * FH / 2, (z0 + z1) / 2); addMesh(u);
+  addCol(x0, x1, z0, z1, GH, H + 0.6, { nav: false });
+  const corn = new THREE.Mesh(new THREE.BoxGeometry(w + 0.5, 0.3, d + 0.5), M.wall); corn.position.set((x0 + x1) / 2, GH + 0.15, (z0 + z1) / 2); addMesh(corn);
+  const par = new THREE.Mesh(new THREE.BoxGeometry(w + 0.2, 0.6, d + 0.2), M.wall); par.position.set((x0 + x1) / 2, H + 0.3, (z0 + z1) / 2); addMesh(par, { shoot: false });
+  orthoRoof(x0, z0, x1, z1, H + 0.62);
+  return H;
+}
+function signTex(w, h, draw) { const t = makeTex(w, h, draw); t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping; return t; }
+// a bar you can walk into: glass front with a double door, sign, lights, counter, bottles, taps, stools, tables, TV
+function barRoom(r, o) {
+  const { x0, x1, z0, z1 } = r, w = x1 - x0, d = z1 - z0, FL = 0.15, HH = 3.6, t = 0.15, cxm = (x0 + x1) / 2, czm = (z0 + z1) / 2;
+  const wallM = std({ color: o.wall, roughness: 0.9 });
+  const floor = flat(o.floorTex, x0, z0, x1, z1, FL + 0.01, o.floorTile, { layer: 4, rough: 0.55 }); floor.material.envMapIntensity = 0.8;
+  box(w, HH - FL, t, wallM, cxm, FL, z0 + t / 2);
+  box(t, HH - FL, d, wallM, x0 + t / 2, FL, czm);
+  box(t, HH - FL, d, wallM, x1 - t / 2, FL, czm);
+  if (o.wainscot) { for (const [a, b, c, e] of [[x0 + t, z0 + t, x1 - t, z0 + t + 0.02], [x0 + t, z0 + t, x0 + t + 0.02, z1 - t], [x1 - t - 0.02, z0 + t, x1 - t, z1 - t]]) box(c - a, 1.1, e - b, std({ color: o.wainscot, roughness: 0.7 }), (a + c) / 2, FL, (b + e) / 2, { col: false }); }
+  // facade: sill, glass, double door, header with the sign
+  const frameM = std({ color: o.frame || 0x2a2b2d, roughness: 0.45, metalness: 0.5, env: 1 });
+  const glassM = new THREE.MeshPhysicalMaterial({ color: 0xa9bec8, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.22, envMapIntensity: 1.4, depthWrite: false });
+  const dx0 = r.door - 1.0, dx1 = r.door + 1.0, fz = z1 - 0.06;
+  for (const [a, b] of [[x0, dx0], [dx1, x1]]) {
+    box(b - a, 0.45, 0.12, frameM, (a + b) / 2, FL, fz);
+    box(b - a, 2.0, 0.03, glassM, (a + b) / 2, FL + 0.45, fz, { sight: false, shoot: false, cast: false, receive: false });
+    const n = Math.max(1, Math.round((b - a) / 1.7));
+    for (let i = 0; i <= n; i++) box(0.07, 2.05, 0.1, frameM, a + (b - a) * i / n, FL + 0.43, fz, { col: false });
+  }
+  box(0.08, 2.4, 0.12, frameM, dx0, FL, fz, { col: false }); box(0.08, 2.4, 0.12, frameM, dx1, FL, fz, { col: false });
+  box(w, HH - FL - 2.4, 0.2, frameM, cxm, FL + 2.4, z1 - 0.1);
+  // the two door leaves, open towards the inside
+  for (const sgn of [-1, 1]) {
+    const leaf = new THREE.Group(); const fr = new THREE.Mesh(new THREE.BoxGeometry(0.95, 2.3, 0.05), frameM); fr.position.x = -sgn * 0.475; leaf.add(fr);
+    const gl = new THREE.Mesh(new THREE.BoxGeometry(0.75, 1.9, 0.055), glassM); gl.position.set(-sgn * 0.475, 0.05, 0); leaf.add(gl);
+    leaf.position.set(r.door + sgn * 1.0, FL + 1.15, z1 - 0.12); leaf.rotation.y = sgn * -1.25; scene.add(leaf); fr.castShadow = true;
+  }
+  const signM = std({ map: o.sign, emissive: 0xffffff, emissiveMap: o.sign, emissiveIntensity: 0.25, roughness: 0.6 });
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(w - 0.3, 0.95, 0.14), [frameM, frameM, frameM, frameM, signM, frameM]);
+  sign.position.set(cxm, FL + 2.48 + 0.48, z1 + 0.07); addMesh(sign);
+  if (o.blade) {
+    const bm = std({ map: o.blade, emissive: 0xffffff, emissiveMap: o.blade, emissiveIntensity: 0.35 });
+    const bl = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.7, 0.9), [bm, bm, frameM, frameM, frameM, frameM]); bl.position.set(x1 - 0.5, 4.3, z1 + 0.55); addMesh(bl);
+  }
+  // lights: one warm point light per bar plus glowing ceiling lamps
+  const L = new THREE.PointLight(o.light || 0xffd9a8, 14, 14, 1.5); L.position.set(cxm, 3.1, czm + 0.5); scene.add(L);
+  const lampM = std({ color: 0xfff3dc, emissive: o.light || 0xffd9a8, emissiveIntensity: 2.2 });
+  for (let i = 0; i < 3; i++) for (const zz of [z0 + 2.2, z1 - 2.8]) {
+    const lx = x0 + w * (i + 0.5) / 3;
+    const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.6, 4), M.dark); cord.position.set(lx, 3.3, zz); scene.add(cord);
+    const shade = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.22, 12, 1, true), std({ color: o.shade || 0x1c1c1c, roughness: 0.4, metalness: 0.6, side: THREE.DoubleSide })); shade.position.set(lx, 2.95, zz); scene.add(shade);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), lampM); bulb.position.set(lx, 2.86, zz); scene.add(bulb);
+  }
+  // counter along the back wall
+  const c0 = x0 + 0.9, c1 = x1 - 2.6, cz = z0 + 2.15;
+  box(c1 - c0, 1.02, 0.55, std({ map: o.counterTex, roughness: 0.75 }), (c0 + c1) / 2, FL, cz, { sight: false });
+  box(c1 - c0 + 0.12, 0.05, 0.78, std({ color: o.top || 0x2a2522, roughness: 0.25, metalness: 0.1, env: 1 }), (c0 + c1) / 2, FL + 1.02, cz + 0.05, { col: false });
+  box(0.55, 1.02, 1.6, std({ map: o.counterTex, roughness: 0.75 }), c0 + 0.27, FL, cz - 1.05, { sight: false });
+  // back bar: shelves and bottles
+  const shelfM = std({ color: 0x4a3626, roughness: 0.7 });
+  for (const sy of [1.3, 1.75, 2.2]) box(c1 - c0, 0.04, 0.28, shelfM, (c0 + c1) / 2, FL + sy, z0 + t + 0.14, { col: false });
+  const mirror = new THREE.Mesh(new THREE.PlaneGeometry(c1 - c0, 1.2), std({ color: 0x8a949a, roughness: 0.05, metalness: 1, env: 1 })); mirror.position.set((c0 + c1) / 2, FL + 1.85, z0 + t + 0.01); scene.add(mirror);
+  const bottleGeo = new THREE.LatheGeometry([[0, 0], [0.036, 0], [0.038, 0.02], [0.038, 0.17], [0.03, 0.205], [0.013, 0.24], [0.013, 0.3], [0, 0.3]].map(([x, y]) => new THREE.Vector2(x, y)), 10);
+  const nB = Math.floor((c1 - c0) / 0.11) * 3, bottles = new THREE.InstancedMesh(bottleGeo, new THREE.MeshPhysicalMaterial({ roughness: 0.1, metalness: 0, transmission: 0, envMapIntensity: 1.3, emissive: 0x111111 }), nB);
+  const bc = [0x1f5a2a, 0x5a3412, 0xd9d4c4, 0x8a1d1d, 0xc9a24a, 0x2a3f6a, 0x0f2a14], mm = new THREE.Matrix4(); let bi = 0;
+  for (const sy of [1.3, 1.75, 2.2]) for (let bx = c0 + 0.06; bx < c1 - 0.05 && bi < nB; bx += 0.11) { mm.makeTranslation(bx, FL + sy + 0.02, z0 + t + 0.14 + (rnd() - 0.5) * 0.08); mm.scale(new V3(1, R(0.8, 1.25), 1)); bottles.setMatrixAt(bi, mm); bottles.setColorAt(bi, new THREE.Color(bc[(rnd() * bc.length) | 0])); bi++; }
+  bottles.count = bi; scene.add(bottles);
+  // beer taps
+  const chrome = std({ color: 0xdadde0, roughness: 0.15, metalness: 1, env: 1 });
+  const nT = o.taps || 3, tx0 = (c0 + c1) / 2 - (nT - 1) * 0.18;
+  box(0.08 + (nT - 1) * 0.36, 0.08, 0.1, chrome, (c0 + c1) / 2, FL + 1.45, cz, { col: false });
+  for (let i = 0; i < nT; i++) {
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.38, 8), chrome); p.position.set(tx0 + i * 0.36, FL + 1.25, cz); scene.add(p);
+    const hnd = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.2, 6), std({ color: o.tapCols ? o.tapCols[i % o.tapCols.length] : 0x111111 })); hnd.position.set(tx0 + i * 0.36, FL + 1.58, cz + 0.04); scene.add(hnd);
+  }
+  // stools along the counter
+  for (let sx = c0 + 0.9; sx < c1 - 0.3; sx += 0.75) {
+    const seat = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.06, 12), std({ color: o.stool || 0x3a2a20, roughness: 0.6 })); seat.position.set(sx, FL + 0.76, cz + 0.75); seat.castShadow = true; scene.add(seat);
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.74, 6), chrome); leg.position.set(sx, FL + 0.38, cz + 0.75); scene.add(leg);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.15, 0.012, 4, 14), chrome); ring.rotation.x = Math.PI / 2; ring.position.set(sx, FL + 0.3, cz + 0.75); scene.add(ring);
+  }
+  // tables with chairs
+  const woodM = std({ color: o.tableCol || 0x6b4a30, roughness: 0.6 }), chairM = std({ color: o.chairCol || 0x2b2b2b, roughness: 0.6 });
+  for (const [tx, tz] of o.tables) {
+    box(0.8, 0.04, 0.8, woodM, tx, FL + 0.74, tz, { col: false });
+    box(0.06, 0.74, 0.06, M.dark, tx, FL, tz, { col: false });
+    box(0.45, 0.03, 0.45, M.dark, tx, FL, tz, { col: false });
+    for (const [ddx, ddz, ry] of [[-0.62, 0, Math.PI / 2], [0.62, 0, -Math.PI / 2]]) {
+      const ch = new THREE.Group();
+      const s_ = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.04, 0.42), chairM); s_.position.y = 0.46; ch.add(s_);
+      const b_ = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.45, 0.04), chairM); b_.position.set(0, 0.7, 0.2); ch.add(b_);
+      for (const [lx, lz] of [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]]) { const l = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.46, 0.03), chairM); l.position.set(lx, 0.23, lz); ch.add(l); }
+      ch.position.set(tx + ddx, FL, tz + ddz); ch.rotation.y = ry; ch.traverse(q => { if (q.isMesh) q.castShadow = true; }); scene.add(ch);
+    }
+    addCol(tx - 0.85, tx + 0.85, tz - 0.42, tz + 0.42, 0, FL + 0.8, { sight: false, nav: true });
+  }
+  // TV on the side wall, showing the football
+  const tvTex = signTex(256, 144, (g, W_, H_) => {
+    g.fillStyle = '#2f7a35'; g.fillRect(0, 0, W_, H_); for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? '#2b7231' : '#34843b'; g.fillRect(i * 32, 0, 32, H_); }
+    g.strokeStyle = '#e8f0e8'; g.lineWidth = 2; g.strokeRect(12, 14, W_ - 24, H_ - 24); g.beginPath(); g.moveTo(W_ / 2, 14); g.lineTo(W_ / 2, H_ - 10); g.stroke(); g.beginPath(); g.arc(W_ / 2, H_ / 2 + 2, 16, 0, 7); g.stroke();
+    for (let i = 0; i < 12; i++) { g.fillStyle = i < 6 ? '#e8e8e8' : '#c42a2a'; g.beginPath(); g.arc(30 + rnd() * 196, 24 + rnd() * 100, 3, 0, 7); g.fill(); }
+    g.fillStyle = 'rgba(0,0,0,.7)'; g.fillRect(6, 4, 92, 16); g.fillStyle = '#fff'; g.font = 'bold 12px sans-serif'; g.fillText('VCF 1 - 0 RMA', 10, 16);
+  });
+  const tv = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.75, 1.3), [std({ map: tvTex, emissive: 0xffffff, emissiveMap: tvTex, emissiveIntensity: 0.9 }), M.dark, M.dark, M.dark, M.dark, M.dark]);
+  tv.position.set(x0 + t + 0.04, FL + 2.3, z1 - 3.2); addMesh(tv);
+  if (o.board) { const bd = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.0), std({ map: o.board, roughness: 0.9 })); bd.position.set(x1 - t - 0.01, FL + 1.75, czm); bd.rotation.y = -Math.PI / 2; addMesh(bd, { cast: false }); }
+  if (o.extra) o.extra({ x0, x1, z0, z1, FL, cz, c1 });
+}
+
+function avionLevel() {
+  const zc = AV.zc, A_ = AV.ang, sA = Math.sin(A_), cA = Math.cos(A_);
+  // road paint
+  const line = (x0, z0, x1, z1, w = 0.12) => {
+    const dx = x1 - x0, dz = z1 - z0, L = Math.hypot(dx, dz);
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, L).rotateX(-Math.PI / 2), M.paint);
+    m.position.set((x0 + x1) / 2, 0.01, (z0 + z1) / 2); m.rotation.y = Math.atan2(dx, dz); m.receiveShadow = true; scene.add(m);
+  };
+  const dashed = (x0, z0, x1, z1) => { const L = Math.hypot(x1 - x0, z1 - z0), n = Math.floor(L / 6); for (let i = 0; i < n; i++) { const a = i / n, b = (i + 0.5) / n; line(x0 + (x1 - x0) * a, z0 + (z1 - z0) * a, x0 + (x1 - x0) * b, z0 + (z1 - z0) * b); } };
+  const zebra = (cx, cz, ang, n, len) => { const ux = Math.cos(ang), uz = Math.sin(ang); for (let i = 0; i < n; i++) { const m = new THREE.Mesh(new THREE.PlaneGeometry(0.5, len).rotateX(-Math.PI / 2), M.paint); const k = (i - (n - 1) / 2) * 1.0; m.position.set(cx + ux * k, 0.012, cz + uz * k); m.rotation.y = -ang; m.receiveShadow = true; scene.add(m); } };
+  const W = AV.W, edge = AV.edge, xCap = (AV.capZ - 16.9) / 0.601 - 40;
+  dashed(-32, -26, -32, 6); dashed(-38, zc(-38), 46, zc(46)); dashed(-29, -20.5, 50, -20.5); dashed(54, -26, 54, 56);
+  line(-35, -23.5, -35, 7, 0.1); line(-29, -17.5, -29, zc(-29) - 3.25, 0.1); line(57.5, -17.5, 57.5, 58, 0.1); line(50.5, -17.5, 50.5, edge(50.5), 0.1);
+  { const o = 3.25; line(-29, zc(-29) - o, 46, zc(46) - o, 0.1); line(-38, zc(-38) + o, 40, zc(40) + o, 0.1); }
+  // parking stalls: perpendicular on Constitució (west side), both sides of the diagonal, angled on Guerrer de Moixent
+  for (let z = -22; z <= 6; z += 2.5) line(-40.5, z, -35, z, 0.1);
+  for (let x = 0; x <= 44; x += 2.6) { const z = zc(x); line(x + sA * 3.25, z - cA * 3.25, x + sA * 8.25, z - cA * 8.25, 0.1); }
+  for (let x = -36; x <= 26; x += 2.6) { const z = zc(x); line(x - sA * 3.25, z + cA * 3.25, x - sA * 8.25, z + cA * 8.25, 0.1); }
+  for (let z = -16; z <= 54; z += 3.3) line(57.5, z, 61.5, z - 3.0, 0.1);
+  zebra(-32, -14, 0, 6, 4); zebra(26, -20.5, Math.PI / 2, 6, 4); zebra(54, -14, 0, 7, 4);
+  { const x = -3, z = zc(x); const m = 7; for (let i = 0; i < m; i++) { const k = (i - (m - 1) / 2) * 1.0; const pl = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 4).rotateX(-Math.PI / 2), M.paint); pl.position.set(x - sA * k, 0.012, z + cA * k); pl.rotation.y = Math.PI / 2 - A_; scene.add(pl); } }
+
+  // pavements: the big plaza (grey tiles) and the sidewalks
+  const plaza = paveMat(T.paveGrey, T.paveGreyN, 1.6, 0xf2f0ea);
+  const side = PB_concrete ? pbr(PB_concrete, 1, 1, 1, { color: new THREE.Color().setRGB(1.3, 1.28, 1.24) }) : std({ map: T.concrete });
+  if (PB_concrete) for (const k of ['map', 'normalMap', 'roughnessMap']) side[k].repeat.set(1 / 2.5, 1 / 2.5);
+  polySlab([[-29, -17.5], [50.5, -17.5], [50.5, edge(50.5)], [0, edge(0)], [0, zc(0) - 3.25], [-29, zc(-29) - 3.25]], 0.15, plaza);
+  polySlab([[-42.5, zc(-42.5) + 8.25], [xCap, zc(xCap) + 8.25], [xCap, W(xCap)], [-42.5, W(-42.5)]], 0.15, side);
+  polySlab([[-42.5, -26.6], [64, -26.6], [64, -23.5], [-42.5, -23.5]], 0.15, side);
+  polySlab([[-42.5, -23.5], [-40.5, -23.5], [-40.5, 7], [-42.5, 7]], 0.15, side);
+  polySlab([[61.5, -23.5], [64, -23.5], [64, AV.capZ], [61.5, AV.capZ]], 0.15, side);
+
+  // hedge block next to Villa & Nueva, grass strip and the park
+  box(2.6, 1.55, 14.2, std({ map: rep(T.hedge, 1.3, 7), roughness: 0.95 }), -25.5, 0.15, -5.3);
+  flowerBed(-26, 8.4, -9, 9.5); flowerBed(-6, 8.4, 4.5, 9.5);
+  railing(-26, 8.3, -9, 8.3); railing(-6, 8.3, 4.5, 8.3);
+  // tree pits in the park (dirt circles) are drawn with the trees; playground with green and red rubber
+  const PG = AV.playground;
+  { const rm = flat(T.rubber, PG.x0, PG.z0, PG.x1, PG.z1, 0.17, 2, { layer: 3, rough: 0.8 }).material; if (PB_rubber) { rm.normalMap = rep(PB_rubber.normalMap, 6, 5); rm.needsUpdate = true; } }
+  const redRub = makeTex(64, 64, (g, w, h) => { g.fillStyle = '#b83a2e'; g.fillRect(0, 0, w, h); speckle(g, w, h, 1500, ['#a83226', '#c84a3c', '#9a2c22'], 1, 2); });
+  for (const [x, z, rr] of [[9.5, 12.5, 2.2], [15.5, 17.5, 1.8]]) { const c = new THREE.Mesh(new THREE.CircleGeometry(rr, 28).rotateX(-Math.PI / 2), std({ map: redRub, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 })); c.position.set(x, 0.175, z); c.receiveShadow = true; scene.add(c); }
+  railing(PG.x0, PG.z0, 10.8, PG.z0); railing(13.2, PG.z0, PG.x1, PG.z0); railing(PG.x1, PG.z0, PG.x1, PG.z1); railing(PG.x0, PG.z1, PG.x1 - 2.4, PG.z1); railing(PG.x0, PG.z0, PG.x0, 16.5);
+  {
+    const blue = std({ color: 0x2466c8, roughness: 0.5 }), yel = std({ color: 0xf0bf22, roughness: 0.5 }), red = std({ color: 0xd23a2a, roughness: 0.5 });
+    // tower with a blue roof, slide and a rope bridge to a second platform
+    const tw = (cx, cz, hgt) => {
+      box(1.5, 0.12, 1.5, std({ color: 0x8a5a36, roughness: 0.8 }), cx, 0.17 + hgt, cz, { sight: false });
+      for (const [dx, dz] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) { const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, hgt + 1.6, 8), yel); p.position.set(cx + dx, 0.17 + (hgt + 1.6) / 2, cz + dz); p.castShadow = true; scene.add(p); addCol(cx + dx - 0.07, cx + dx + 0.07, cz + dz - 0.07, cz + dz + 0.07, 0, hgt + 1.6, { sight: false }); }
+      const rf = new THREE.Mesh(new THREE.ConeGeometry(1.25, 0.8, 4), blue); rf.rotation.y = Math.PI / 4; rf.position.set(cx, 0.17 + hgt + 2.0, cz); rf.castShadow = true; scene.add(rf);
+      for (const dz of [-0.72, 0.72]) { const pnl = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.7, 0.04), red); pnl.position.set(cx, 0.17 + hgt + 0.45, cz + dz); scene.add(pnl); }
+    };
+    tw(9, 15, 1.4); tw(14.5, 15, 1.1);
+    const br = new THREE.Mesh(new THREE.BoxGeometry(4, 0.08, 0.9), std({ color: 0x8a5a36 })); br.position.set(11.75, 0.17 + 1.25, 15); br.rotation.z = 0.07; br.castShadow = true; scene.add(br);
+    const sl = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.08, 3.2), blue); sl.position.set(9, 0.17 + 0.8, 17.6); sl.rotation.x = 0.45; sl.castShadow = true; scene.add(sl); shootables.push(sl);
+    addCol(8.65, 9.35, 16.1, 19.3, 0, 1.2, { sight: false });
+    for (const [x, z, c] of [[16.5, 11, yel], [7.5, 11, red], [16.5, 19, blue]]) {
+      const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.4, 8), M.metal); sp.position.set(x, 0.37, z); scene.add(sp);
+      const b = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), c); b.scale.set(0.7, 0.8, 1.3); b.position.set(x, 0.78, z); b.castShadow = true; scene.add(b);
+    }
+  }
+  // garden by Carrer del Guerrer de Moixent (OpenStreetMap park), raised bed with flowers and railing
+  flowerBed(29.5, 24, 40.5, 33.5); railing(29.4, 23.9, 40.6, 23.9); railing(29.4, 23.9, 29.4, 33.6); railing(40.6, 23.9, 40.6, 33.6);
+  flowerBed(41.5, 34.5, 46, 41.5);
+
+  // ------------------------------------------------ buildings (OpenStreetMap footprints and storeys)
+  const HA = blockAv(AV.A, 6, T.brickFacade, T.shopX, [AV.villa, AV.tot]);
+  // shop fronts on the parts of block A without a bar (roller shutters, like in the photos)
+  blockAv(AV.C, 5, T.brickFacade2, T.shopC2);
+  blockAv({ x0: -21, x1: 21, z0: -42.2, z1: -27.2 }, 6, T.brickFacade, T.shopB2);
+  blockAv({ x0: 30.5, x1: 45.6, z0: -74, z1: -26.8 }, 5, T.brickFacade2, T.shopX);
+  blockAv({ x0: -60.6, x1: -44.6, z0: -73, z1: -44 }, 5, T.facadeB, T.shopX);
+  blockAv({ x0: 60.5, x1: 103.5, z0: -74, z1: -30 }, 5, T.facadeC, T.shopX);
+  blockAv({ x0: -100, x1: -62, z0: -60, z1: -30 }, 5, T.brickFacade2, T.shopX);
+  blockAv({ x0: -21, x1: 21, z0: -80, z1: -50 }, 6, T.brickFacade, T.shopX);
+  // Xirivella - Alqueries railway station (glass roof), beyond Av. de la Constitució
+  { const st = new THREE.Mesh(new THREE.BoxGeometry(24, 5.5, 16.5), [std({ color: 0xd8d6d0 }), std({ color: 0xd8d6d0 }), std({ color: 0x8c979c, roughness: 0.2, metalness: 0.6, env: 1 }), M.roof, std({ color: 0xd8d6d0 }), std({ color: 0xd8d6d0 })]);
+    st.position.set(-71.5, 2.75, -9.6); st.rotation.y = -0.46; addMesh(st);
+    const sg = signTex(512, 64, (g, w, h) => { g.fillStyle = '#f4f4f0'; g.fillRect(0, 0, w, h); g.fillStyle = '#1c3f7a'; g.font = 'bold 36px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('XIRIVELLA - ALQUERIES', w / 2, h / 2 + 2); });
+    const sm = new THREE.Mesh(new THREE.PlaneGeometry(8, 1), std({ map: sg, emissive: 0x333333 })); sm.position.set(-62.6, 4.2, -5.3); sm.rotation.y = -0.46 + Math.PI / 2; scene.add(sm); }
+  // IES Ramon Muntaner: sports court and school building, behind a tall fence
+  { const cm = flat(T.court, 64.5, 6, 108, 50, 0.02, 0, { layer: 2, rough: 0.9 }).material; cm.map.repeat.set(1, 1); }
+  blockAv({ x0: 66, x1: 104, z0: -22, z1: 2 }, 2, T.facadeB, T.shopX);
+  {
+    const fenceMat = new THREE.MeshStandardMaterial({ map: T.chain, alphaMap: T.chain, alphaTest: 0.35, side: THREE.DoubleSide, color: 0x6f9a6a, metalness: 0.5, roughness: 0.5 });
+    const L = 80, FH = 3.2, tex = T.chain.clone(); tex.repeat.set(L / 0.12, FH / 0.12); tex.needsUpdate = true; const mat = fenceMat.clone(); mat.map = tex; mat.alphaMap = tex;
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(L, FH), mat); p.position.set(AV.east + 0.3, FH / 2, 22); p.rotation.y = Math.PI / 2; scene.add(p);
+    for (let z = -18; z <= 62; z += 3) { const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, FH, 6), M.green); post.position.set(AV.east + 0.3, FH / 2, z); scene.add(post); }
+  }
+  // railway: scrubland, two tracks and catenary posts beyond a low wall
+  {
+    const rz = (x) => W(x) + 5.5, ra = A_;
+    const sc = new THREE.Mesh(new THREE.PlaneGeometry(260, 60).rotateX(-Math.PI / 2), PB_dirt ? pbr(PB_dirt, 260, 60, 3, { color: 0xc9b48e }) : std({ map: T.dirt }));
+    sc.position.set(10, 0.03, rz(10) - 2); sc.rotation.y = -ra; sc.receiveShadow = true; scene.add(sc);
+    const bal = std({ color: 0x8b8378, roughness: 1 }), steel = std({ color: 0x5c4a3c, roughness: 0.5, metalness: 0.7, env: 1 });
+    for (const off of [-2.1, 2.1]) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(260, 0.25, 3.2), bal); b.position.set(10, 0.1, rz(10) + off); b.rotation.y = -ra; b.receiveShadow = true; scene.add(b);
+      for (const ro of [-0.72, 0.72]) { const r = new THREE.Mesh(new THREE.BoxGeometry(260, 0.12, 0.07), steel); r.position.set(10 + (off + ro) * -Math.sin(ra) * 0, 0.29, rz(10) + off + ro); r.rotation.y = -ra; scene.add(r); }
+    }
+    for (let x = -60; x <= 90; x += 25) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.25, 7, 0.25), M.metal); p.position.set(x, 3.5, rz(x) - 4.2); scene.add(p); const arm = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 6.5), M.metal); arm.position.set(x, 6.6, rz(x) - 1.2); arm.rotation.y = 0; scene.add(arm); }
+  }
+  // the edge of the playable area: a low wall with a metal fence along the railway, invisible walls elsewhere
+  {
+    const wallM = std({ color: 0xc9c4b8, roughness: 0.95 }), x0 = -43, x1 = xCap + 6;
+    const zz0 = W(x0), zz1 = W(x1), L = Math.hypot(x1 - x0, zz1 - zz0);
+    const wl = new THREE.Mesh(new THREE.BoxGeometry(L, 1.0, 0.3), wallM); wl.position.set((x0 + x1) / 2, 0.5, (zz0 + zz1) / 2 + 0.15); wl.rotation.y = -A_; addMesh(wl);
+    for (let x = x0; x < x1; x += 2.4) { const p = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.2, 0.05), railM); p.position.set(x, 1.6, W(x) + 0.15); scene.add(p); }
+    for (const yy of [1.1, 2.15]) { const r = new THREE.Mesh(new THREE.BoxGeometry(L, 0.05, 0.05), railM); r.position.set((x0 + x1) / 2, yy, (zz0 + zz1) / 2 + 0.15); r.rotation.y = -A_; scene.add(r); }
+    for (let x = -46; x < 66; x++) { const z = Math.min(AV.capZ, W(x + 0.5)); addCol(x, x + 1, z, z + 3, 0, 50, { sight: false }); }
+    // concrete planters where the area ends on the south-east (the roundabout beyond is out of bounds)
+    for (let x = xCap + 2; x < 64; x += 3.2) box(1.2, 0.7, 1.2, std({ color: 0xb9b4aa, roughness: 0.95 }), x, x > 50.5 && x < 57.5 ? 0 : 0.15, AV.capZ + 0.4, { col: false });
+    addCol(AV.west - 2, AV.west, -40, 30, 0, 50, { sight: false });
+    addCol(AV.east, AV.east + 2, -40, 80, 0, 50, { sight: false });
+    addCol(-60, 80, AV.north - 2, AV.north, 0, 50, { sight: false });
+    box(0.3, 0.9, 33, wallM, AV.west - 0.15, 0.15, -9.5, { col: false });
+  }
+
+  // ------------------------------------------------ the two bars (OpenStreetMap: amenity=pub "Villa & Nueva", craft=brewery "Tot per l'aire")
+  const villaSign = signTex(1024, 96, (g, w, h) => {
+    g.fillStyle = '#16231b'; g.fillRect(0, 0, w, h); g.strokeStyle = '#c9a25a'; g.lineWidth = 3; g.strokeRect(8, 8, w - 16, h - 16);
+    g.fillStyle = '#e2c27a'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = 'bold 52px Georgia, serif'; g.fillText('VILLA & NUEVA', w / 2 - 70, h / 2 + 2);
+    g.font = 'bold 26px sans-serif'; g.fillStyle = '#f0e6d0'; g.fillText('GRILL · BAR', w - 150, h / 2 + 2);
+    g.fillStyle = '#e2c27a'; g.font = '30px sans-serif'; g.fillText('🔥', 80, h / 2 + 2);
+  });
+  const villaBlade = signTex(128, 96, (g, w, h) => { g.fillStyle = '#16231b'; g.fillRect(0, 0, w, h); g.fillStyle = '#e2c27a'; g.font = 'bold 30px Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('V&N', w / 2, h / 2 - 10); g.font = 'bold 16px sans-serif'; g.fillText('GRILL', w / 2, h / 2 + 22); });
+  const villaFloor = makeTex(256, 256, (g, w, h) => { for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) { g.fillStyle = (x + y) % 2 ? '#7a3e2a' : '#8d4a33'; g.fillRect(x * 32, y * 32, 32, 32); } speckle(g, w, h, 3000, ['rgba(0,0,0,.08)', 'rgba(255,255,255,.05)'], 1, 2); g.strokeStyle = 'rgba(40,20,10,.5)'; for (let p = 0; p <= w; p += 32) { g.beginPath(); g.moveTo(p, 0); g.lineTo(p, h); g.stroke(); g.beginPath(); g.moveTo(0, p); g.lineTo(w, p); g.stroke(); } });
+  const woodPlanks = (base) => makeTex(256, 128, (g, w, h) => { g.fillStyle = base; g.fillRect(0, 0, w, h); for (let y = 0; y < h; y += 16) { g.fillStyle = `rgba(0,0,0,${0.05 + rnd() * 0.12})`; g.fillRect(0, y, w, 16); g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, y, w, 1); } speckle(g, w, h, 1500, ['rgba(0,0,0,.08)', 'rgba(255,255,255,.05)'], 1, 3); });
+  const grillMenu = signTex(256, 170, (g, w, h) => {
+    g.fillStyle = '#1d1d1b'; g.fillRect(0, 0, w, h); g.strokeStyle = '#8a6a3a'; g.lineWidth = 8; g.strokeRect(0, 0, w, h);
+    g.fillStyle = '#f2ead8'; g.textAlign = 'center'; g.font = 'bold 22px Georgia, serif'; g.fillText('A LA BRASA', w / 2, 32);
+    g.font = '16px sans-serif'; g.textAlign = 'left'; ['Entrecot', 'Chuletón', 'Parrillada', 'Costillas', 'Almuerzos', 'Menú del día'].forEach((t, i) => { g.fillText(t, 22, 60 + i * 18); g.fillText('·····', 150, 60 + i * 18); });
+  });
+  barRoom(AV.villa, {
+    wall: 0xb9a589, wainscot: 0x4a3122, floorTex: villaFloor, floorTile: 2, counterTex: woodPlanks('#5b3a24'), top: 0x1f1b18, sign: villaSign, blade: villaBlade,
+    light: 0xffc98a, shade: 0x2a2a2a, taps: 3, tapCols: [0xc9a24a, 0x1a1a1a, 0xb02020], stool: 0x3a2418, frame: 0x1e2a22, board: grillMenu,
+    tables: [[-18.6, -2.4], [-15.7, -2.4], [-12.8, -4.6], [-18.6, -5.4]],
+    extra: ({ x1, z0, FL }) => {
+      // charcoal grill with a steel hood in the back corner
+      const brick = makeTex(128, 64, (g, w, h) => { g.fillStyle = '#9a4a2c'; g.fillRect(0, 0, w, h); g.fillStyle = '#d8cbb4'; for (let y = 0; y < h; y += 8) { g.fillRect(0, y, w, 1); const o = (y / 8) % 2 ? 0 : 8; for (let x = o; x < w; x += 16) g.fillRect(x, y, 1, 8); } });
+      box(1.9, 0.95, 1.1, std({ map: rep(brick, 2, 1), roughness: 0.9 }), x1 - 1.15, FL, z0 + 0.7, { sight: false });
+      const ember = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.8).rotateX(-Math.PI / 2), std({ color: 0x331008, emissive: 0xff5a14, emissiveIntensity: 1.8 })); ember.position.set(x1 - 1.15, FL + 0.97, z0 + 0.7); scene.add(ember);
+      const grate = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.02, 0.85), std({ color: 0x222222, metalness: 0.8, roughness: 0.4, env: 1, wireframe: true })); grate.position.set(x1 - 1.15, FL + 1.02, z0 + 0.7); scene.add(grate);
+      const hood = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 1.1, 1.0, 4, 1), std({ color: 0x9ea3a7, metalness: 0.9, roughness: 0.3, env: 1 })); hood.rotation.y = Math.PI / 4; hood.scale.set(1, 1, 0.65); hood.position.set(x1 - 1.15, FL + 2.5, z0 + 0.75); addMesh(hood);
+    },
+  });
+  const totSign = signTex(1024, 96, (g, w, h) => {
+    g.fillStyle = '#f3f1ea'; g.fillRect(0, 0, w, h); g.fillStyle = '#1f5f8f'; g.fillRect(0, 0, w, 10); g.fillRect(0, h - 10, w, 10);
+    g.save(); g.translate(70, h / 2); g.fillStyle = '#1f5f8f'; for (let i = 0; i < 3; i++) { g.rotate(Math.PI * 2 / 3); g.beginPath(); g.ellipse(0, -20, 7, 20, 0, 0, 7); g.fill(); } g.beginPath(); g.arc(0, 0, 7, 0, 7); g.fill(); g.restore();
+    g.fillStyle = '#163f60'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = 'bold 54px sans-serif'; g.fillText("TOT PER L'AIRE", w / 2 - 40, h / 2 + 2);
+    g.font = 'bold 22px sans-serif'; g.fillStyle = '#c47a10'; g.fillText('CERVESA ARTESANA', w - 140, h / 2 + 2);
+  });
+  const totBlade = signTex(128, 96, (g, w, h) => { g.fillStyle = '#f3f1ea'; g.fillRect(0, 0, w, h); g.fillStyle = '#163f60'; g.font = 'bold 22px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('TOT PER', w / 2, h / 2 - 14); g.fillText("L'AIRE", w / 2, h / 2 + 12); g.fillStyle = '#c47a10'; g.fillRect(20, h - 14, w - 40, 4); });
+  const beerBoard = signTex(256, 170, (g, w, h) => {
+    g.fillStyle = '#20262a'; g.fillRect(0, 0, w, h); g.strokeStyle = '#7a5a3a'; g.lineWidth = 8; g.strokeRect(0, 0, w, h);
+    g.fillStyle = '#f4f1e8'; g.textAlign = 'center'; g.font = 'bold 20px sans-serif'; g.fillText('CERVESES DE LA CASA', w / 2, 30);
+    g.textAlign = 'left'; g.font = '15px sans-serif';
+    [['Hèlix', 'IPA 6,2%'], ['Pilot', 'Lager 4,8%'], ['Turbulència', 'Stout 5,9%'], ['Enlairament', 'Pale Ale 5,4%'], ['Aterratge', 'Blat 4,5%']].forEach(([a, b], i) => { g.fillStyle = '#ffd27a'; g.fillText(a, 18, 60 + i * 21); g.fillStyle = '#f4f1e8'; g.fillText(b, 140, 60 + i * 21); });
+  });
+  barRoom(AV.tot, {
+    wall: 0xdedad2, wainscot: 0x6b7b84, floorTex: T.concrete, floorTile: 3, counterTex: woodPlanks('#9a7048'), top: 0x2d2a26, sign: totSign, blade: totBlade,
+    light: 0xffe2b8, shade: 0x1f5f8f, taps: 6, tapCols: [0xc47a10, 0x1f5f8f, 0x222222, 0xd8b04a, 0x8a1d1d, 0x2f6b3a], stool: 0x1f5f8f, chairCol: 0x3c4a52, tableCol: 0x9a7048, frame: 0x163f60, board: beerBoard,
+    tables: [[1.4, -2.4], [4.0, -2.6], [8.0, -2.4], [8.0, -5.2]],
+    extra: ({ x0, x1, z0, FL }) => {
+      // stainless fermentation tanks of the brewery
+      const steel = std({ color: 0xd4d8db, roughness: 0.22, metalness: 1, env: 1 });
+      for (const [tx, tz] of [[x1 - 1.0, z0 + 0.9], [x1 - 1.0, z0 + 2.4]]) {
+        const body = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 1.6, 20), steel); body.position.set(tx, FL + 1.55, tz); addMesh(body);
+        const cone = new THREE.Mesh(new THREE.ConeGeometry(0.55, 0.5, 20), steel); cone.rotation.x = Math.PI; cone.position.set(tx, FL + 0.5, tz); addMesh(cone);
+        const dome = new THREE.Mesh(new THREE.SphereGeometry(0.55, 20, 8, 0, Math.PI * 2, 0, Math.PI / 2), steel); dome.position.set(tx, FL + 2.35, tz); addMesh(dome);
+        for (const [lx, lz] of [[-0.45, -0.3], [0.45, -0.3], [0, 0.5]]) box(0.05, 0.8, 0.05, steel, tx + lx, FL, tz + lz, { col: false });
+        addCol(tx - 0.58, tx + 0.58, tz - 0.58, tz + 0.58, 0, FL + 2.8);
+      }
+      // a wooden propeller on the wall and a little plane hanging from the ceiling (the bar is called "all for the air")
+      const wood = std({ color: 0x8a5a30, roughness: 0.5 });
+      const prop = new THREE.Group(); for (const s_ of [-1, 1]) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.0, 0.05), wood); b.position.y = s_ * 0.5; b.rotation.y = s_ * 0.3; prop.add(b); } prop.add(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.12, 10).rotateX(Math.PI / 2), M.dark));
+      prop.position.set(x0 + 0.2, FL + 2.2, -6.5); prop.rotation.set(0, Math.PI / 2, 0.6); scene.add(prop);
+      const plane = new THREE.Group(), red = std({ color: 0xc8392c, roughness: 0.5 }), cream = std({ color: 0xf0e6cc, roughness: 0.5 });
+      const fus = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.05, 1.1, 10).rotateZ(Math.PI / 2), red); plane.add(fus);
+      for (const yy of [-0.07, 0.12]) { const wg = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.02, 1.3), cream); wg.position.set(0.15, yy, 0); plane.add(wg); }
+      const tail = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.02, 0.45), cream); tail.position.set(-0.5, 0, 0); plane.add(tail);
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 0.02), red); fin.position.set(-0.5, 0.1, 0); plane.add(fin);
+      plane.position.set(4.5, 2.95, -5); plane.rotation.y = 0.5; plane.traverse(q => { if (q.isMesh) q.castShadow = true; }); scene.add(plane);
+      const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.6, 3), M.dark); wire.position.set(4.5, 3.3, -5); scene.add(wire);
+      // kegs stacked by the counter
+      for (const [kx, ky] of [[x0 + 0.5, 0], [x0 + 0.5, 0.62], [x0 + 1.15, 0]]) { const k = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.6, 14), steel); k.position.set(kx, FL + 0.3 + ky, z0 + 4.1); addMesh(k); }
+      addCol(x0 + 0.2, x0 + 1.4, z0 + 3.85, z0 + 4.35, 0, FL + 1.2, { sight: false });
+    },
+  });
+  // terraces in front of the bars (positions from the parasols in the orthophoto)
+  { const um = new THREE.Mesh(new THREE.ConeGeometry(3.4, 0.7, 4, 1, true), std({ color: 0x3b3e40, roughness: 0.85, side: THREE.DoubleSide })); um.rotation.y = Math.PI / 4; um.position.set(-21.5, 2.75, 6.4); addMesh(um, { shoot: false });
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 8), M.dark); pole.position.set(-21.5, 1.45, 6.4); addMesh(pole); addCol(-21.6, -21.4, 6.3, 6.5, 0, 2.7, { sight: false }); }
+  for (const [x, z] of [[-23.4, 4.6], [-19.6, 4.6], [-23.4, 7.4], [-19.6, 7.4], [-16, 3.4], [-12.6, 3.4]]) terraceSet(x, z, false);
+  for (const [x, z] of [[-1, 6.6], [1.6, 4.0], [4.2, 6.6], [6.8, 4.0], [9.6, 6.6]]) terraceSet(x, z, true, 0xf3efe6);
+  return HA;
+}
+
+function avionTrees() {
+  const zc = AV.zc, sA = Math.sin(AV.ang), cA = Math.cos(AV.ang);
+  const pit = (x, z, y = 0.155) => { const m = new THREE.Mesh(new THREE.CircleGeometry(0.75, 16).rotateX(-Math.PI / 2), std({ map: T.dirt, color: 0x8a7458, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -5 })); m.position.set(x, y, z); m.receiveShadow = true; scene.add(m); };
+  // park: jacaranda and plane trees on the crowns visible in the orthophoto
+  tree(-14, 11.5, 1.05, 'jacaranda', 0.15); pit(-14, 11.5);
+  for (const [x, z] of [[-5, 15.5], [3.5, 21.5], [-17, 14.5], [-24.5, 11], [14, 26], [31, 33], [41, 36], [22, 30]]) { tree(x + R(-0.3, 0.3), z + R(-0.3, 0.3), R(1.0, 1.2), 'plane', 0.15); pit(x, z); }
+  // trees between the parking spaces on both sides of the diagonal stretch
+  for (const x of AV.treesN) { const z = zc(x); tree(x + sA * 5.75, z - cA * 5.75, R(0.95, 1.15), 'plane', 0); }
+  for (const x of AV.treesS) { const z = zc(x); tree(x - sA * 5.75, z + cA * 5.75, R(1.0, 1.2), 'plane', 0); }
+  // column of trees on the west pavement of Carrer del Guerrer de Moixent, and the row along the school fence
+  for (const z of [-2, 7, 17, 27, 37]) { tree(48 + R(-0.2, 0.2), z, R(0.95, 1.1), 'plane', 0.15); pit(48, z); }
+  for (const z of [-12, -3, 6.7, 14, 25, 33.7, 41.8, 49.8]) tree(62.6, z, R(0.75, 0.9), 'leafy', 0.15);
+  // jacaranda garden by the station
+  for (const [x, z] of [[-50, -14], [-47, -6], [-53, 0], [-48, 6], [-56, -8]]) tree(x, z, R(1.0, 1.2), rnd() < 0.6 ? 'jacaranda' : 'leafy', 0.02);
+  for (const [x, z] of [[-30, -40], [-35, -32], [26, -40], [26, -30.5], [-27, -30]]) tree(x, z, R(0.9, 1.1), 'leafy', 0.15);
+}
+
+function avionProps() {
+  const zc = AV.zc, A_ = AV.ang, sA = Math.sin(A_), cA = Math.cos(A_);
+  // benches facing the playground and along the plaza, lamps, bins and recycling containers
+  for (const [x, z, r] of [[-11, 13.5, -0.4], [-2, 12, -0.2], [3.2, 13.5, Math.PI / 2], [20, 12.5, -Math.PI / 2], [20, 17, -Math.PI / 2], [26, 10, Math.PI], [26, 20, 0], [36, 18, Math.PI]]) bench(x, z, r);
+  for (const [x, z] of [[-27.5, 4], [-8, 7.5], [11, 7.5], [24, -14], [24, 6], [24, 26], [36.5, 20], [48.6, 12], [48.6, 32], [-41.5, -12], [-41.5, 4], [62.8, 0], [62.8, 30]]) lamp(x, z);
+  for (let x = -20; x <= 40; x += 15) { const d = x >= 0 ? 9.2 : 4.2; lamp(x + sA * d, zc(x) - cA * d); }
+  for (const [x, z] of [[-9.5, 7.6], [19, 7.8], [29, -16.6], [46.5, 20]]) {
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.22, 0.85, 12), std({ color: 0x4a4f52 })); b.position.set(x, 0.6, z); b.castShadow = true; scene.add(b); shootables.push(b);
+    addCol(x - 0.25, x + 0.25, z - 0.25, z + 0.25, 0, 1.0, { sight: false });
+  }
+  for (const [x, c] of [[-27.5, 0x2c6f3b], [-25.7, 0xe2c22b], [-23.9, 0x2a5fa8], [-22.1, 0x7a5232]]) box(1.6, 1.6, 1.7, std({ color: c, roughness: 0.6 }), x, 0, -18.5);
+  // vending machine and bollards on the walkway between the two blocks
+  for (let z = -16.5; z <= 14; z += 3) box(0.18, 0.8, 0.18, M.dark, 30.6, 0.15, z, { sight: false });
+  // cars
+  for (let z = -21.2; z <= 6; z += 2.5) if (rnd() < 0.8 && Math.abs(z + 14) > 3) car(-37.75, z, rnd() < 0.5 ? 0 : Math.PI, rnd() < 0.1 ? 'van' : 'car');
+  for (let x = 1.3; x <= 44; x += 2.6) {
+    if (rnd() > 0.78 || AV.treesN.some(tx => Math.abs(tx - x) < 1.6)) continue;
+    const z = zc(x); car(x + sA * 5.75, z - cA * 5.75, -(Math.PI / 2 + A_) + (rnd() < 0.5 ? 0 : Math.PI));
+  }
+  for (let x = -34.7; x <= 25; x += 2.6) {
+    if (rnd() > 0.75 || AV.treesS.some(tx => Math.abs(tx - x) < 1.6)) continue;
+    const z = zc(x); car(x - sA * 5.75, z + cA * 5.75, -(Math.PI / 2 + A_) + (rnd() < 0.5 ? 0 : Math.PI), rnd() < 0.1 ? 'van' : 'car');
+  }
+  for (let z = -15.4; z < 54; z += 3.3) if (rnd() < 0.75) car(59.4, z - 1.5, rnd() < 0.5 ? Math.PI / 4 : -3 * Math.PI / 4, rnd() < 0.12 ? 'van' : 'car');
+  for (let x = -26; x < 45; x += 5.6) { if (Math.abs(x - 26) < 5) continue; if (rnd() < 0.55) car(x, -22.4, 0, rnd() < 0.15 ? 'van' : 'car'); if (rnd() < 0.45 && x > -20) car(x + 1.5, -18.6, Math.PI); }
+}
+
 // ============================================================ LEVEL
 // Real layout, measured from OpenStreetMap and the IGN PNOA orthophoto (1 unit = 1 m).
 // The map is rotated so the streets run along the axes:
@@ -677,6 +1166,7 @@ const REAL = {
   const RL = REAL;
   // base asphalt
   flat(T.asphalt, -160, -160, 160, 160, 0, 4, PB_asphalt ? { pb: PB_asphalt, pbTile: 3.5 } : {});
+  if (MAPID === 'avion') avionLevel(); else {
   // road paint helpers
   const line = (x0, z0, x1, z1, w = 0.12) => {
     const dx = x1 - x0, dz = z1 - z0, L = Math.hypot(dx, dz);
@@ -878,6 +1368,7 @@ const REAL = {
   warehouse(62, -27, 112, 0, 10, 1); warehouse(62, 3, 112, 30, 9, 2); warehouse(62, -52, 112, -30, 10, 0); warehouse(62, -95, 112, -55, 10, 1); warehouse(62, -128, 112, -100, 9, 2);
   // south of Carrer els Garrofers
   warehouse(-105, 51, -40.5, 128, 9, 1); warehouse(-22, 51, 40, 130, 10, 0); warehouse(62, 51, 112, 128, 10, 2);
+  }
 }
 
 // ------------------------------------------------ trees (merged for speed)
@@ -898,7 +1389,7 @@ function colorGeo(geo, hex, vary) {
   for (let i = 0; i < n; i++) { const k = (1 - vary) + vary * (0.6 + 0.4 * Math.max(0, p.getY(i)) / 2); arr[i * 3] = c.r * k; arr[i * 3 + 1] = c.g * k; arr[i * 3 + 2] = c.b * k; }
   geo.setAttribute('color', new THREE.BufferAttribute(arr, 3));
 }
-const leafyGeos = [];
+const leafyGeos = [], purpleGeos = [];
 function canopyCards(list, cx, cy, cz, rx, ry, n, size, hex) {
   const col = new THREE.Color(hex);
   for (let i = 0; i < n; i++) {
@@ -920,7 +1411,7 @@ function canopyCards(list, cx, cy, cz, rx, ry, n, size, hex) {
 }
 function tree(x, z, s = 1, kind = 'pine', baseY = 0.17) {
   const pine = kind === 'pine';
-  const th = (pine ? R(3.8, 6.2) : R(2.2, 3.2)) * s;
+  const th = (pine ? R(3.8, 6.2) : kind === 'plane' ? R(3.4, 4.4) : R(2.2, 3.2)) * s;
   const lean = R(-0.12, 0.12), leanDir = R(0, Math.PI * 2);
   const tg = new THREE.CylinderGeometry(0.13 * s, 0.24 * s, th, 9, 4);
   tg.translate(0, th / 2, 0);
@@ -940,12 +1431,15 @@ function tree(x, z, s = 1, kind = 'pine', baseY = 0.17) {
       canopyCards(leafGeos, cx, cy + 0.3 * s, cz, R(1.3, 1.9) * s, R(0.4, 0.6) * s, 30, 1.6 * s, [0x7a9a5c, 0x86a466, 0x6f8d52][(rnd() * 3) | 0]);
     }
   } else {
-    canopyCards(leafyGeos, top.x, top.y + 1.0 * s, top.z, 1.7 * s, 1.3 * s, 60, 1.3 * s, [0x9cbc6c, 0xa8c676, 0x90b062][(rnd() * 3) | 0]);
+    if (kind === 'jacaranda') canopyCards(purpleGeos, top.x, top.y + 1.0 * s, top.z, 2.0 * s, 1.2 * s, 70, 1.3 * s, [0xf4f0ff, 0xe6e0f4, 0xffffff][(rnd() * 3) | 0]);
+    else if (kind === 'plane') canopyCards(leafyGeos, top.x, top.y + 1.4 * s, top.z, 2.6 * s, 1.7 * s, 95, 1.5 * s, [0x92b462, 0x9fbe6c, 0x86a858][(rnd() * 3) | 0]);
+    else canopyCards(leafyGeos, top.x, top.y + 1.0 * s, top.z, 1.7 * s, 1.3 * s, 60, 1.3 * s, [0x9cbc6c, 0xa8c676, 0x90b062][(rnd() * 3) | 0]);
   }
   addCol(x - 0.25 * s, x + 0.25 * s, z - 0.25 * s, z + 0.25 * s, 0, th, { sight: true, nav: true });
 }
 {
   // trees placed on the crowns visible in the orthophoto
+  if (MAPID === 'avion') avionTrees(); else {
   // park pines: a column between the park and Carrer de les Moreres and a cluster at the south end
   for (const [x, z] of [[33.5, -16], [33.5, -9.5], [33, -3], [33.5, 3.5], [34, 10], [34.5, 17], [35, 24], [25, 4], [7.5, 15.5], [12.5, 22], [18.5, 19.5], [24, 22], [28.5, 25.5]])
     tree(x + R(-0.4, 0.4), z + R(-0.4, 0.4), R(0.95, 1.2), 'pine');
@@ -954,11 +1448,13 @@ function tree(x, z, s = 1, kind = 'pine', baseY = 0.17) {
   for (const x of [-18, -10.5, -3, 4.5, 12, 27, 38.5]) tree(x + R(-0.3, 0.3), -25.5 + R(-0.3, 0.3), R(1.05, 1.25), 'leafy');
   // trees west of Carrer les Oliveres, near Carrer els Garrofers
   for (const [x, z] of [[-44, 24], [-41.5, 30], [-48, 31]]) tree(x, z, R(0.9, 1.1), 'leafy', 0.02);
+  }
   const trunkMat = PB_bark ? Object.assign(std({ map: rep(PB_bark.map, 1, 3), normalMap: rep(PB_bark.normalMap, 1, 3), roughnessMap: rep(PB_bark.roughnessMap, 1, 3), roughness: 1, color: 0xd8c8b8 })) : std({ color: 0x6b5543, roughness: 0.95 });
   const trunks = new THREE.Mesh(mergeGeometries(trunkGeos), trunkMat); addMesh(trunks);
   const fol = (tex) => { const m = new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.45, side: THREE.DoubleSide, vertexColors: true, roughness: 0.85, envMapIntensity: 0.5 }); FOLIAGE.push(m); return m; };
-  addMesh(new THREE.Mesh(mergeGeometries(leafGeos), fol(T.needles)), { shoot: false });
-  addMesh(new THREE.Mesh(mergeGeometries(leafyGeos), fol(T.leaves)), { shoot: false });
+  if (leafGeos.length) addMesh(new THREE.Mesh(mergeGeometries(leafGeos), fol(T.needles)), { shoot: false });
+  if (leafyGeos.length) addMesh(new THREE.Mesh(mergeGeometries(leafyGeos), fol(T.leaves)), { shoot: false });
+  if (purpleGeos.length) addMesh(new THREE.Mesh(mergeGeometries(purpleGeos), fol(T.blossom)), { shoot: false });
 }
 
 // ------------------------------------------------ benches, lamps, bins
@@ -979,15 +1475,16 @@ function bench(x, z, rot) {
   addCol(x - (sw ? 0.3 : 0.95), x + (sw ? 0.3 : 0.95), z - (sw ? 0.95 : 0.3), z + (sw ? 0.95 : 0.3), 0, 0.5, { sight: false, nav: false });
 }
 // benches along the strip between the court and the park (facing the court), and along the pedestrian street
-for (let z = -14; z <= 26; z += 6) bench(4.2, z, Math.PI / 2);
-for (const x of [-14, -6.5, 1, 8, 16, 31]) bench(x, -22.6, Math.PI);
-for (const [x, z, r] of [[14, -17.3, 0], [22, -17.3, 0], [40, -10, -Math.PI / 2], [40, 6, -Math.PI / 2]]) bench(x, z, r);
 function lamp(x, z) {
   const p = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 8, 8), M.metal); p.position.set(x, 4.15, z); p.castShadow = true; scene.add(p);
   const a = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 1.2), M.metal); a.position.set(x, 8.1, z + 0.5); scene.add(a);
   const h = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.6), M.dark); h.position.set(x, 8.05, z + 1.1); h.castShadow = true; scene.add(h);
   shootables.push(p); addCol(x - 0.12, x + 0.12, z - 0.12, z + 0.12, 0, 8, { sight: false });
 }
+if (MAPID === 'llanera') {
+for (let z = -14; z <= 26; z += 6) bench(4.2, z, Math.PI / 2);
+for (const x of [-14, -6.5, 1, 8, 16, 31]) bench(x, -22.6, Math.PI);
+for (const [x, z, r] of [[14, -17.3, 0], [22, -17.3, 0], [40, -10, -Math.PI / 2], [40, 6, -Math.PI / 2]]) bench(x, z, r);
 for (const [x, z] of [[-21.6, -16], [-21.6, 6], [-21.6, 27], [3.6, -10], [3.6, 12], [44.8, -18], [44.8, 4], [44.8, 26], [-34, -40], [-34, -10], [-34, 20], [60, -30], [60, 0], [60, 30], [-10, 30.5], [20, 30.5], [-20, 49], [15, 49], [45, 49], [0, -29], [24, -29]]) lamp(x, z);
 for (const [x, z] of [[4.4, -4], [4.4, 18], [28.5, -5], [-21.6, -2], [40, -22]]) {
   const b = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.22, 0.85, 12), std({ color: 0x3f6d3f })); b.position.set(x, 0.6, z); b.castShadow = true; scene.add(b); shootables.push(b);
@@ -995,6 +1492,7 @@ for (const [x, z] of [[4.4, -4], [4.4, 18], [28.5, -5], [-21.6, -2], [40, -22]])
 }
 // recycling containers on Oliveres (seen in the satellite view)
 for (const [z, c] of [[-22.2, 0x2c6f3b], [-20.4, 0xe2c22b], [-18.6, 0x2a5fa8]]) box(1.5, 1.6, 1.7, std({ color: c, roughness: 0.6 }), -23.2, 0, z);
+}
 
 // ------------------------------------------------ cars
 const carGeo = {};
@@ -1055,6 +1553,7 @@ function car(x, z, rot, type = 'car', color) {
 }
 {
   const RL = REAL;
+  if (MAPID === 'avion') avionProps(); else {
   // Oliveres, block side: angled parking along the court
   for (let z = -16.85; z < 28; z += 3.3) if (rnd() < 0.8) car(-23.1, z, rnd() < 0.5 ? Math.PI / 4 : -3 * Math.PI / 4);
   // Oliveres, west side: parallel parking
@@ -1070,6 +1569,7 @@ function car(x, z, rot, type = 'car', color) {
   // the white van from the street view, and the yard behind the block
   car(57.4, 22, -Math.PI / 2, 'van', 0xf3f3f1);
   for (const x of [-15, -8, 5, 12, 26]) if (rnd() < 0.8) car(x, -47, Math.PI / 2 * (rnd() < 0.5 ? 1 : -1));
+  }
   for (const [key, geo, mat] of [['wheel', wheelGeo, M.rubberTire], ['hub', hubGeo, M.metal], ['head', lightGeo, headMat], ['tail', lightGeo, tailMat]]) {
     const list = carInst[key]; const im = new THREE.InstancedMesh(geo, mat, list.length);
     list.forEach((m, i) => im.setMatrixAt(i, m)); im.castShadow = key === 'wheel'; im.receiveShadow = true; scene.add(im);
@@ -1077,11 +1577,13 @@ function car(x, z, rot, type = 'car', color) {
 }
 
 // ------------------------------------------------ invisible map boundary
-const BOUNDS = { x0: -36.8, x1: 61.8, z0: -51, z1: 50.3 };
-addCol(BOUNDS.x0 - 2, BOUNDS.x0, -200, 200, 0, 50, { sight: false });
-addCol(BOUNDS.x1, BOUNDS.x1 + 2, -200, 200, 0, 50, { sight: false });
-addCol(-200, 200, BOUNDS.z0 - 2, BOUNDS.z0, 0, 50, { sight: false });
-addCol(-200, 200, BOUNDS.z1, BOUNDS.z1 + 2, 0, 50, { sight: false });
+if (MAPID === 'llanera') {
+  const BOUNDS = { x0: -36.8, x1: 61.8, z0: -51, z1: 50.3 };
+  addCol(BOUNDS.x0 - 2, BOUNDS.x0, -200, 200, 0, 50, { sight: false });
+  addCol(BOUNDS.x1, BOUNDS.x1 + 2, -200, 200, 0, 50, { sight: false });
+  addCol(-200, 200, BOUNDS.z0 - 2, BOUNDS.z0, 0, 50, { sight: false });
+  addCol(-200, 200, BOUNDS.z1, BOUNDS.z1 + 2, 0, 50, { sight: false });
+}
 
 // lower env reflections on matte stuff
 scene.traverse(o => { if (o.isMesh && o.material && !Array.isArray(o.material) && o.material.envMapIntensity === 1 && o.material.roughness > 0.7) o.material.envMapIntensity = 0.35; });
@@ -1143,7 +1645,7 @@ function nearCols(x0, x1, z0, z1) {
 }
 
 // ============================================================ navigation grid (A*)
-const NAV = { x0: -40, z0: -56, w: 105, h: 110 };
+const NAV = MC.nav;
 const navBlocked = new Uint8Array(NAV.w * NAV.h);
 for (const c of colliders) {
   if (!c.nav) continue;
@@ -1284,6 +1786,13 @@ function sfxThud(vol = 0.12) {
   const n = AC.createBufferSource(); n.buffer = noiseBuf; const f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 400;
   const g = AC.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
   n.connect(f); f.connect(g); g.connect(master); n.start(t, Math.random()); n.stop(t + 0.1);
+}
+function sfxStep(vol, pan) {
+  if (!AC) return; const t = AC.currentTime;
+  const p = AC.createStereoPanner(); p.pan.value = pan; p.connect(master);
+  const n = AC.createBufferSource(); n.buffer = noiseBuf; const f = AC.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 650 + Math.random() * 300; f.Q.value = 1.4;
+  const g = AC.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol * 0.5, t + 0.01); g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+  n.connect(f); f.connect(g); g.connect(p); n.start(t, Math.random()); n.stop(t + 0.12);
 }
 function spatial(pos) {
   const rel = pos.clone().sub(camera.position); const d = rel.length();
@@ -1751,15 +2260,15 @@ function updatePickups(dt) {
 
 // ============================================================ game state
 const G = { state: 'menu', wave: 0, toSpawn: 0, alive: 0, kills: 0, score: 0, spawnCd: 0, interT: 0, locked: false, everLocked: false, time: 0 };
-const SPAWNS = [[-29, -49], [-29, -20], [-29, 12], [-29, 46], [54.3, -49], [54.3, -20], [54.3, 10], [54.3, 46], [-34, 41.5], [0, 41.5], [30, 41.5], [61, 41.5], [5, -48], [30, -48]];
+const SPAWNS = MC.spawns;
 function startWave() {
-  if (MP.active && MP.mode === 'pvp') return;
+  if (isVs()) return;
   G.wave++; G.toSpawn = 3 + G.wave * 2; G.spawnCd = 1.5;
   banner('OLEADA ' + G.wave, G.toSpawn + ' enemigos se acercan', 2.4);
   if (MP.active && MP.role === 'host') { netSend({ t: 'wave', n: G.wave }); netSend({ t: 'banner', a: 'OLEADA ' + G.wave, b: G.toSpawn + ' enemigos se acercan', d: 2.4 }); if (G.dead) respawnLocal(); }
 }
 function spawnEnemy() {
-  if (MP.active && MP.mode === 'pvp') return;   // 1 contra 1: only the two players, never bots
+  if (isVs()) return;   // 1 contra 1 and tactical: only the two players, never bots
   const tgs = aiTargets(); if (!tgs.length) tgs.push(TGT_LOCAL);
   const cand = SPAWNS.map(([x, z]) => ({ x, z, d: Math.min(...tgs.map(t => Math.hypot(x - t.pos.x, z - t.pos.z))) })).filter(s => s.d > 28);
   const pool = cand.filter(s => tgs.every(t => segBlocked(new V3(s.x, 1.6, s.z), new V3(t.pos.x, t.pos.y + 1.6, t.pos.z))));
@@ -1769,7 +2278,7 @@ function spawnEnemy() {
   G.alive++; G.toSpawn--;
 }
 function updateWaves(dt) {
-  if (MP.active && MP.mode === 'pvp') return;
+  if (isVs()) return;
   if (G.interT > 0) { G.interT -= dt; if (G.interT <= 0) startWave(); return; }
   G.spawnCd -= dt;
   if (G.toSpawn > 0 && G.alive < Math.min(3 + G.wave, 10) && G.spawnCd <= 0) { spawnEnemy(); G.spawnCd = RR(0.8, 2.2); }
@@ -1924,7 +2433,7 @@ function hurtPlayer(dmg, from) {
   const el = document.createElement('div'); el.className = 'dir'; el.style.transform = `rotate(${ang}rad)`; el.style.opacity = 1; hud.dirs.appendChild(el);
   requestAnimationFrame(() => { el.style.opacity = 0; }); setTimeout(() => el.remove(), 1000);
   if (G.dead) return;
-  if (player.god && !(MP.active && MP.mode === 'pvp')) return;
+  if (player.god && !isVs()) return;
   player.hp -= dmg; player.lastHurt = G.time; vigT = 0.5;
   sfxThud(0.3);
   if (player.hp <= 0) { player.hp = 0; if (MP.active) localDied(); else gameOver(); }
@@ -1932,6 +2441,20 @@ function hurtPlayer(dmg, from) {
 for (let i = 0; i < WEAPONS.length; i++) { const s = document.createElement('span'); s.textContent = (i + 1); hud.slots.appendChild(s); }
 function streetName() {
   const { x, z } = player.pos;
+  if (MAPID === 'avion') {
+    const inR = (r) => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1;
+    if (inR(AV.villa)) return 'Villa & Nueva · dentro';
+    if (inR(AV.tot)) return "Tot per l'aire · dentro";
+    if (z > -0.3 && z < 9 && x > -26 && x < -10) return 'Terraza de Villa & Nueva';
+    if (z > -0.3 && z < 9 && x > -2 && x < 11) return "Terraza de Tot per l'aire";
+    if (x > -35 && x < -29 && z < 8) return 'Av. de la Constitució';
+    if (z > AV.edge(x) - 0.2) return 'Av. de la Constitució';
+    if (z > -23.5 && z < -17.5) return 'Carrer de Carmen Estellés';
+    if (x > 50.5 && x < 57.5) return 'Carrer del Guerrer de Moixent';
+    if (inR(AV.playground)) return 'Parque infantil';
+    if (z > 8 && x < 24) return 'Parque del Avión';
+    return 'Pl. de la Comare Rosario Soler';
+  }
   if (x > -32.8 && x < -25.2) return 'Carrer les Oliveres';
   if (x > 50 && x < 58.5) return 'Carrer de les Moreres';
   if (z > 35.5 && z < 47.5) return 'Carrer els Garrofers';
@@ -1947,7 +2470,7 @@ function streetName() {
 }
 // minimap: the real orthophoto, like the satellite view in Google Maps
 const mapC = $('map'), mapG = mapC.getContext('2d');
-const MAP = { x0: -42, z0: -58, s: 1.55 };
+const MAP = MC.map;
 const mapBg = document.createElement('canvas'); mapBg.width = 180; mapBg.height = 172;
 {
   const g = mapBg.getContext('2d'); const S = MAP.s;
@@ -1960,7 +2483,8 @@ const mapBg = document.createElement('canvas'); mapBg.width = 180; mapBg.height 
   }
   g.font = 'bold 9px sans-serif'; g.fillStyle = 'rgba(255,255,255,.9)'; g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 2;
   const label = (t, x, z, rot = 0) => { g.save(); g.translate((x - MAP.x0) * S, (z - MAP.z0) * S); g.rotate(rot); g.strokeText(t, 0, 0); g.fillText(t, 0, 0); g.restore(); };
-  label('C. les Oliveres', -30.5, 20, -Math.PI / 2); label('C. de les Moreres', 52.8, 20, -Math.PI / 2); label('C. els Garrofers', -38, 44.5);
+  if (MAPID === 'avion') { label('Av. Constitució', -33.5, 2, -Math.PI / 2); label('Av. de la Constitució', -8, AV.zc(-8) + 1.2, AV.ang); label('C. Carmen Estellés', -2, -19.6); label('C. Guerrer de Moixent', 55.5, 30, -Math.PI / 2); }
+  else { label('C. les Oliveres', -30.5, 20, -Math.PI / 2); label('C. de les Moreres', 52.8, 20, -Math.PI / 2); label('C. els Garrofers', -38, 44.5); }
 }
 function drawMap() {
   const S = MAP.s; mapG.drawImage(mapBg, 0, 0);
@@ -1972,7 +2496,7 @@ function drawMap() {
     if (e.dead || !(e.canSee || e.mesh.userData.flash.visible)) continue;
     mapG.fillStyle = '#e8483a'; mapG.beginPath(); mapG.arc((e.pos.x - MAP.x0) * S, (e.pos.z - MAP.z0) * S, 3, 0, 7); mapG.fill();
   }
-  if (MP.active && MP.remote && MP.remote.got && (MP.mode === 'coop' || G.time - MP.remote.lastFire < 1.5)) {
+  if (MP.active && MP.remote && MP.remote.got && (MP.mode === 'coop' || (MP.mode === 'pvp' && G.time - MP.remote.lastFire < 1.5))) {
     mapG.fillStyle = MP.mode === 'coop' ? '#3ad1ff' : '#ff3a2a'; mapG.strokeStyle = '#fff'; mapG.lineWidth = 1.5;
     mapG.beginPath(); mapG.arc((MP.remote.pos.x - MAP.x0) * S, (MP.remote.pos.z - MAP.z0) * S, 4, 0, 7); mapG.fill(); mapG.stroke();
   }
@@ -2000,6 +2524,7 @@ function updateHUD(dt) {
   txt(hud.nades, `💣 ${NADES.frag} (G)   ⚡ ${NADES.flash} (V)`);
   [...hud.slots.children].forEach((s, i) => { const c = i === cur ? 'on' : (WEAPONS[i].mag + WEAPONS[i].reserve === 0 ? 'empty' : ''); if (s.className !== c) s.className = c; });
   if (MP.active && MP.mode === 'pvp') { txt(hud.wave, `TÚ ${MP.myKills} – ${MP.theirKills} RIVAL`); txt(hud.info, `1 contra 1 · gana el primero que llegue a ${MP_GOAL} bajas`); }
+  else if (TAC.on) { txt(hud.wave, `RONDA ${TAC.round} · TÚ ${TAC.me} – ${TAC.them} RIVAL`); txt(hud.info, tacInfo()); }
   else { txt(hud.wave, G.interT > 0 ? 'DESCANSO · ' + Math.ceil(G.interT) : 'OLEADA ' + G.wave); txt(hud.info, `Enemigos: ${G.alive + G.toSpawn} · Bajas: ${G.kills} · Puntos: ${G.score}` + (MP.active && MP.remote ? ` · Amigo: ${MP.remote.alive ? MP.remote.hp + ' ❤' : 'caído'}` : '')); }
   if (hudFrame % 10 === 0) txt(hud.street, streetName());
   if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) hud.banner.style.opacity = 0; }
@@ -2032,7 +2557,7 @@ addEventListener('keydown', (e) => {
   if (e.code === 'Space') e.preventDefault();
   if (e.code === 'KeyG') playerThrow('frag');
   if (e.code === 'KeyV') playerThrow('flash');
-  if (e.code === 'KeyO' && MP.active && MP.mode === 'pvp') { banner('NO DISPONIBLE EN 1 CONTRA 1', '', 1.2); return; }
+  if (e.code === 'KeyO' && isVs()) { banner('NO DISPONIBLE EN 1 CONTRA 1', '', 1.2); return; }
   if (e.code === 'KeyO') { player.god = !player.god; banner(player.god ? 'INVENCIBILIDAD ACTIVADA' : 'INVENCIBILIDAD DESACTIVADA', 'pulsa O para cambiar', 1.4); if (player.god) player.hp = 100; }
   if (/^Digit[1-5]$/.test(e.code)) selectWeapon(+e.code.slice(5) - 1);
   if ((e.code === 'Escape' || e.code === 'KeyP') && !G.locked) pause();
@@ -2068,7 +2593,7 @@ function startGame(mp = false) {
   if (MP.remote) { MP.remote.remove(); MP.remote = null; }
   for (const e of enemies) scene.remove(e.mesh); enemies.length = 0; enemyParts.length = 0;
   for (const p of pickups) scene.remove(p.g); pickups.length = 0;
-  Object.assign(player, { hp: 100, crouch: false, eye: 1.62, yaw: 2.6, pitch: 0 }); player.pos.set(16, 0.17, -12); player.vel.set(0, 0, 0);
+  Object.assign(player, { hp: 100, crouch: false, eye: 1.62, yaw: MC.start[2], pitch: 0 }); player.pos.set(MC.start[0], 0.17, MC.start[1]); player.vel.set(0, 0, 0);
   for (const W of WEAPONS) { W.mag = W.magSize; W.reserve = W.reserve0; W.g.visible = false; }
   NADES.frag = 2; NADES.flash = 2; for (const g of grenades) scene.remove(g.m); grenades.length = 0; blindT = 0; shakeT = 0; for (const e of enemies) e.blindT = 0;
   cur = 2; WEAPONS[cur].g.visible = true; WEAPONS[cur].g.position.copy(WEAPONS[cur].hipV);
@@ -2076,16 +2601,18 @@ function startGame(mp = false) {
   Object.assign(G, { state: 'play', wave: 0, toSpawn: 0, alive: 0, kills: 0, score: 0, interT: 0 });
   $('startOv').classList.add('hidden'); $('overOv').classList.add('hidden'); $('pauseOv').classList.add('hidden');
   if (MP.active) {
-    MP.remote = new RemotePlayer(MP.mode === 'pvp');   // after the reset above, so its hit boxes stay registered
-    const sp = MP.mode === 'pvp' ? (MP.role === 'host' ? [-9, 27] : [30, -24]) : (MP.role === 'host' ? [16, -12] : [18.5, -10]);
+    MP.remote = new RemotePlayer(MP.mode !== 'coop');   // after the reset above, so its hit boxes stay registered
+    const sp = MP.mode !== 'coop' ? (MP.role === 'host' ? MC.vsA : MC.vsB) : (MP.role === 'host' ? MC.coop[0] : MC.coop[1]);
     player.pos.set(sp[0], 0.17, sp[1]);
-    const other = MP.mode === 'pvp' ? (MP.role === 'host' ? [30, -24] : [-9, 27]) : [8, 8];
+    const other = MP.mode !== 'coop' ? (MP.role === 'host' ? MC.vsB : MC.vsA) : MC.coopLook;
     player.yaw = Math.atan2(-(other[0] - sp[0]), -(other[1] - sp[1]));
   }
   $('againBtn').disabled = false; $('againBtn').textContent = 'OTRA VEZ';
   lock();
   if (!MP.active || (MP.role === 'host' && MP.mode === 'coop')) startWave();
   else if (MP.mode === 'pvp') banner('1 CONTRA 1', 'el primero en llegar a 10 bajas gana', 2.5);
+  TAC.on = MP.active && MP.mode === 'tac'; TAC.me = TAC.them = TAC.round = 0; TAC.phase = 'idle'; tacZoneMesh();
+  if (TAC.on && MP.role === 'host') tacNextRound();
   if (MP.active && MP.role === 'guest' && !document.pointerLockElement) setTimeout(() => { if (!document.pointerLockElement) pause(); }, 50);
 }
 function pause() { if (G.state !== 'play') return; G.state = 'pause'; firing = false; ads = false; $('pauseOv').classList.remove('hidden'); }
@@ -2106,7 +2633,12 @@ $('hostBtn').onclick = () => hostGame();
 $('cancelMp').onclick = () => { mpCleanup(); MP.role = null; mpStatus('Partida de dos jugadores cancelada.'); };
 $('joinBtn').onclick = () => joinGame();
 $('resumeBtn').onclick = resume;
-{ const j = new URLSearchParams(location.search).get('join'); if (j) { $('joinCode').value = j.toUpperCase().slice(0, 4); $('mpStatus').innerHTML = `Te han invitado a la partida <b class="code">${$('joinCode').value}</b>. Pulsa <b>UNIRSE</b>.`; } }
+{ const q = new URLSearchParams(location.search), j = q.get('join'); if (j) { $('joinCode').value = j.toUpperCase().slice(0, 4); $('mpStatus').innerHTML = `Te han invitado a la partida <b class="code">${$('joinCode').value}</b>. Pulsa <b>UNIRSE</b>.`; if (q.get('auto')) setTimeout(() => joinGame(), 300); } }
+// map selector: each map is its own page load (different buildings, colliders and navigation grid)
+$('mapTitle').textContent = MC.title; $('mapSub').textContent = MC.sub; hud.street.textContent = MC.street; document.title = MC.title.charAt(0) + MC.title.slice(1).toLowerCase() + ' · Xirivella';
+$('mapSel').value = MAPID;
+$('mapSel').onchange = () => { mpCleanup(); location.href = location.href.split('?')[0].split('#')[0] + '?map=' + $('mapSel').value; };
+function goToMap(map, extra = '') { location.href = location.href.split('?')[0].split('#')[0] + '?map=' + map + extra; }
 $('pauseOv').addEventListener('click', (e) => { if (e.target.id !== 'resumeBtn') resume(); });
 
 // ============================================================ shooting
@@ -2191,7 +2723,9 @@ function updatePlayer(dt) {
   const acc = player.onGround ? 11 : 2.5;
   player.vel.x += (wish.x - player.vel.x) * Math.min(1, acc * dt);
   player.vel.z += (wish.z - player.vel.z) * Math.min(1, acc * dt);
-  if (keys.Space && player.onGround) { player.vel.y = 5.9; player.onGround = false; }
+  const frozen = TAC.on && (TAC.phase === 'prep' || TAC.phase === 'idle');
+  if (frozen) { wish.set(0, 0, 0); player.vel.x = player.vel.z = 0; }
+  if (keys.Space && player.onGround && !frozen) { player.vel.y = 5.9; player.onGround = false; }
   player.vel.y -= 18 * dt;
   player.pos.x += player.vel.x * dt; player.pos.z += player.vel.z * dt; player.pos.y += player.vel.y * dt;
   resolve(player.pos, 0.35, player.pos.y, player.crouch ? 1.25 : 1.8);
@@ -2211,7 +2745,7 @@ function updatePlayer(dt) {
   // weapon logic
   fireCd -= dt; heat = Math.max(0, heat - dt * 1.6); switchT = Math.max(0, switchT - dt); pumpT = Math.max(0, pumpT - dt);
   if (reloading > 0) { reloading -= dt; if (reloading <= 0) { const take = Math.min(W.magSize - W.mag, W.reserve); W.mag += take; W.reserve -= take; } }
-  const canFire = fireCd <= 0 && reloading <= 0 && switchT <= 0 && throwT <= 0 && W.mag > 0 && !sprint;
+  const canFire = fireCd <= 0 && reloading <= 0 && switchT <= 0 && throwT <= 0 && W.mag > 0 && !sprint && !frozen;
   if (firing && canFire && (W.auto || !shotLatch)) shoot();
   if (W.mag === 0 && reloading <= 0 && W.reserve > 0 && !firing && switchT <= 0) startReload();
   if (muzzleTimer > 0) { muzzleTimer -= dt; if (muzzleTimer <= 0) W.flash.visible = W.flash2.visible = false; }
@@ -2237,7 +2771,7 @@ function updatePlayer(dt) {
   W.g.rotation.y += (ry - W.g.rotation.y) * Math.min(1, dt * 10);
   W.g.rotation.z += (rz - W.g.rotation.z) * Math.min(1, dt * 10);
   if (player.god) player.hp = 100;
-  else if (G.time - player.lastHurt > 6 && player.hp < 100 && player.hp > 0) player.hp = Math.min(100, player.hp + dt * 4);
+  else if (!TAC.on && G.time - player.lastHurt > 6 && player.hp < 100 && player.hp > 0) player.hp = Math.min(100, player.hp + dt * 4);
 }
 
 // ============================================================ two players: 1 contra 1 and cooperative (WebRTC through PeerJS)
@@ -2245,7 +2779,90 @@ function updatePlayer(dt) {
 // two browsers exchange positions, shots, hits and grenades ~20 times per second.
 const MP = { active: false, role: null, mode: null, peer: null, conn: null, code: '', remote: null, ready: false, sendT: 0, snapT: 0, myKills: 0, theirKills: 0, respawnT: 0, pkId: 0, nextEnemyId: 1 };
 const MP_GOAL = 10, PEER_PREFIX = 'plaza-llanera-xirivella-';
-const PVP_SPAWNS = [[-9, 27], [-9, -15], [30, -24], [25, 26.5], [42, -12], [-23, -28], [10, 38], [44, 20]];
+const isVs = () => MP.active && (MP.mode === 'pvp' || MP.mode === 'tac');
+// ---- tactical mode: rounds, one life per round, no health regeneration, one spare magazine, the rival's
+// footsteps are audible and never shown on the map; a round is won by eliminating the rival or by holding the zone
+const TAC = { on: false, round: 0, me: 0, them: 0, phase: 'idle', t: 0, zone: 0, sendT: 0, goal: 5, roundTime: 100, prep: 6, mesh: null };
+function tacZoneMesh() {
+  if (!TAC.mesh) {
+    const Z = MC.zone, g = new THREE.Group();
+    const ring = new THREE.Mesh(new THREE.RingGeometry(Z.r - 0.18, Z.r, 64).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false }));
+    ring.position.y = 0.24; ring.renderOrder = 2; g.add(ring);
+    const wall = new THREE.Mesh(new THREE.CylinderGeometry(Z.r, Z.r, 2.6, 64, 1, true), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.08, side: THREE.DoubleSide, depthWrite: false }));
+    wall.position.y = 1.4; g.add(wall);
+    g.position.set(Z.x, 0, Z.z); scene.add(g); TAC.mesh = { g, ring, wall };
+  }
+  TAC.mesh.g.visible = TAC.on;
+}
+function tacBeginRound(n, iAmA) {
+  TAC.round = n; TAC.phase = 'prep'; TAC.t = TAC.prep; TAC.zone = 0;
+  $('overOv').classList.add('hidden');
+  G.dead = false; player.hp = 100; player.vel.set(0, 0, 0); player.lastHurt = G.time; blindT = 0; reloading = 0; firing = false;
+  for (const W of WEAPONS) { W.mag = W.magSize; W.reserve = W.magSize; }
+  NADES.frag = 1; NADES.flash = 1; for (const g of grenades) scene.remove(g.m); grenades.length = 0;
+  const sp = iAmA ? MC.vsA : MC.vsB, o = iAmA ? MC.vsB : MC.vsA;
+  player.pos.set(sp[0], groundAt(sp[0], sp[1], 0.3, 2) || 0.17, sp[1]); player.yaw = Math.atan2(-(o[0] - sp[0]), -(o[1] - sp[1])); player.pitch = 0;
+  for (const W of WEAPONS) W.g.visible = false; WEAPONS[cur].g.visible = true; switchT = 0.35;
+  banner('RONDA ' + n, `elige arma (1–5) · gana quien elimine al rival o controle ${MC.zone.name}`, 3.2);
+}
+function tacNextRound() {
+  const n = TAC.round + 1, hostA = n % 2 === 1;
+  netSend({ t: 'tr', n, a: hostA }); tacBeginRound(n, hostA);
+}
+function tacRoundEnd(w, why) {
+  if (MP.role !== 'host' || TAC.phase !== 'live') return;
+  if (w === 'h') TAC.me++; else if (w === 'g') TAC.them++;
+  TAC.phase = 'end'; TAC.t = 4;
+  netSend({ t: 'te', w, why, h: TAC.me, g: TAC.them });
+  tacShowEnd(w === 'h' ? 'win' : w === 'g' ? 'lose' : 'draw', why);
+}
+function tacShowEnd(res, why) {
+  const sub = { 'eliminación': 'por eliminación', 'zona': 'por control de la zona', 'tiempo': 'se acabó el tiempo: gana quien tiene más salud' }[why] || '';
+  banner(res === 'win' ? 'RONDA GANADA' : res === 'lose' ? 'RONDA PERDIDA' : 'EMPATE', `${sub} · tú ${TAC.me} – ${TAC.them} rival`, 3.6);
+  sfxClick(res === 'win' ? 1400 : 500, 0.2, 0.12);
+}
+function tacInfo() {
+  if (TAC.phase === 'prep' || TAC.phase === 'idle') return `Prepárate… ${Math.max(0, Math.ceil(TAC.t))} s · elige arma (1–5) · sin curación, un cargador de repuesto`;
+  if (TAC.phase === 'end' || TAC.phase === 'over') return `Primero a ${TAC.goal} rondas`;
+  const mm = Math.max(0, Math.floor(TAC.t / 60)), ss = String(Math.max(0, Math.floor(TAC.t % 60))).padStart(2, '0');
+  const z = MP.role === 'host' ? TAC.zone : TAC.zone, pct = Math.round(Math.abs(z) * 100);
+  const zs = pct < 2 ? 'libre' : z > 0 ? `${pct}% tuya` : `${pct}% del rival`;
+  return `${mm}:${ss} · Zona (${MC.zone.name}): ${zs}`;
+}
+function tacTick(dt) {
+  if (TAC.mesh) {
+    const z = TAC.zone, col = Math.abs(z) < 0.02 ? 0xffffff : z > 0 ? 0x3aa8ff : 0xff4a3a;
+    TAC.mesh.ring.material.color.setHex(col); TAC.mesh.wall.material.color.setHex(col);
+    TAC.mesh.wall.material.opacity = 0.06 + Math.abs(z) * 0.14;
+  }
+  if (TAC.phase === 'prep') {
+    TAC.t -= dt;
+    if (TAC.t <= 0 && MP.role === 'host') { TAC.phase = 'live'; TAC.t = TAC.roundTime; netSend({ t: 'tl' }); banner('¡YA!', '', 0.9); }
+    return;
+  }
+  if (MP.role !== 'host') { if (TAC.phase === 'live') TAC.t -= dt; return; }
+  if (TAC.phase === 'live') {
+    TAC.t -= dt;
+    const Z = MC.zone, r = MP.remote;
+    const inH = !G.dead && Math.hypot(player.pos.x - Z.x, player.pos.z - Z.z) < Z.r;
+    const inG = !!r && r.alive && Math.hypot(r.pos.x - Z.x, r.pos.z - Z.z) < Z.r;
+    if (inH && !inG) TAC.zone = Math.min(1, Math.max(0, TAC.zone) + dt / 8);
+    else if (inG && !inH) TAC.zone = Math.max(-1, Math.min(0, TAC.zone) - dt / 8);
+    else if (!inH && !inG) TAC.zone -= Math.sign(TAC.zone) * Math.min(Math.abs(TAC.zone), dt / 16);
+    TAC.sendT -= dt; if (TAC.sendT <= 0) { TAC.sendT = 0.2; netSend({ t: 'tz', z: Math.round(TAC.zone * 100) / 100, tl: Math.round(TAC.t * 10) / 10 }); }
+    if (TAC.zone >= 1) tacRoundEnd('h', 'zona');
+    else if (TAC.zone <= -1) tacRoundEnd('g', 'zona');
+    else if (TAC.t <= 0) { const a = player.hp, b = r ? r.hp : 0; tacRoundEnd(a > b ? 'h' : b > a ? 'g' : 'd', 'tiempo'); }
+  } else if (TAC.phase === 'end') {
+    TAC.t -= dt;
+    if (TAC.t <= 0) {
+      if (TAC.me >= TAC.goal) { netSend({ t: 'lose' }); mpEnd(true); }
+      else if (TAC.them >= TAC.goal) { netSend({ t: 'win' }); mpEnd(false); }
+      else tacNextRound();
+    }
+  }
+}
+const PVP_SPAWNS = MC.pvp;
 const proxies = [];
 const TGT_LOCAL = { local: true, get pos() { return player.pos; }, get eye() { return player.eye; }, get vel() { return player.vel; }, get crouch() { return player.crouch; }, get alive() { return (G.state === 'play' || G.state === 'pause') && !G.dead; } };
 const TGT_REMOTE = { local: false, get pos() { return MP.remote.pos; }, get eye() { return MP.remote.crouch ? 1.05 : 1.62; }, get vel() { return MP.remote.vel; }, get crouch() { return MP.remote.crouch; }, get alive() { return MP.active && MP.mode === 'coop' && !!MP.remote && MP.remote.alive; } };
@@ -2255,20 +2872,20 @@ function netSend(o) { if (MP.conn && MP.conn.open) { try { MP.conn.send(o); } ca
 const r2 = (v) => Math.round(v * 100) / 100;
 function makeCode() { const A = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; let c = ''; for (let i = 0; i < 4; i++) c += A[(Math.random() * A.length) | 0]; return c; }
 function peerOk() { if (!window.Peer) { mpStatus('No se ha podido cargar el sistema de conexión (PeerJS). Revisa tu conexión a internet.'); return false; } return true; }
-const modeName = (m) => m === 'pvp' ? '1 contra 1' : 'Cooperativo';
+const modeName = (m) => m === 'pvp' ? '1 contra 1' : m === 'tac' ? 'Táctico 1 contra 1' : 'Cooperativo';
 function hostGame(retry = 0) {
   if (!peerOk()) return; initAudio();
   mpCleanup(); MP.role = 'host'; MP.mode = $('mpMode').value; MP.code = makeCode();
   mpStatus('Creando partida…'); lobbyWait('ESPERANDO A TU AMIGO…');
   const peer = MP.peer = new Peer(PEER_PREFIX + MP.code, { debug: 0 });
   peer.on('open', () => {
-    const url = location.href.split('?')[0].split('#')[0] + '?join=' + MP.code;
+    const url = location.href.split('?')[0].split('#')[0] + '?map=' + MAPID + '&join=' + MP.code;
     mpStatus(`Código: <b class="code">${MP.code}</b> · ${modeName(MP.mode)}<br>Pásale el código (o este enlace) a tu amigo:<br><input class="link" readonly value="${url}" onclick="this.select()"><br>Esperando a que se una…`);
   });
   peer.on('connection', (conn) => {
     if (MP.conn) { conn.on('open', () => conn.close()); return; }
     MP.conn = conn; wireConn(conn);
-    conn.on('open', () => { netSend({ t: 'hello', mode: MP.mode }); MP.ready = true; $('playBtn').disabled = false; $('playBtn').textContent = 'EMPEZAR'; mpStatus(`¡Tu amigo se ha unido! · <b>${modeName(MP.mode)}</b><br>Pulsa <b>EMPEZAR</b> cuando estéis listos.`); });
+    conn.on('open', () => { netSend({ t: 'hello', mode: MP.mode, map: MAPID }); MP.ready = true; $('playBtn').disabled = false; $('playBtn').textContent = 'EMPEZAR'; mpStatus(`¡Tu amigo se ha unido! · <b>${modeName(MP.mode)}</b><br>Pulsa <b>EMPEZAR</b> cuando estéis listos.`); });
   });
   peer.on('error', (e) => { if (e.type === 'unavailable-id' && retry < 3) return hostGame(retry + 1); mpStatus('Error de conexión (' + e.type + '). Prueba otra vez.'); });
 }
@@ -2287,6 +2904,7 @@ function joinGame(code) {
   peer.on('error', (e) => mpStatus(e.type === 'peer-unavailable' ? 'No existe ninguna partida con el código <b>' + code + '</b>.' : 'Error de conexión (' + e.type + ').'));
 }
 function mpCleanup() {
+  TAC.on = false; TAC.phase = 'idle'; if (TAC.mesh) TAC.mesh.g.visible = false;
   const c = MP.conn, p = MP.peer; MP.conn = null; MP.peer = null; MP.ready = false; MP.active = false;
   try { c && c.close(); } catch (e) { } try { p && p.destroy(); } catch (e) { }
   if (MP.remote) { MP.remote.remove(); MP.remote = null; }
@@ -2309,6 +2927,7 @@ function onDisconnect(conn) {
   else { mpCleanup(); MP.role = null; mpStatus('Se ha cortado la conexión con tu amigo.'); }
 }
 function backToMenu() {
+  TAC.on = false; if (TAC.mesh) TAC.mesh.g.visible = false;
   G.state = 'menu'; firing = false; ads = false; G.dead = false;
   if (document.pointerLockElement) document.exitPointerLock();
   for (const e of enemies) scene.remove(e.mesh); enemies.length = 0; enemyParts.length = 0;
@@ -2321,18 +2940,26 @@ function backToMenu() {
 }
 function onNet(m) {
   switch (m.t) {
-    case 'join': if (MP.role === 'host') netSend({ t: 'hello', mode: MP.mode }); break;
-    case 'hello': MP.mode = m.mode; mpStatus(`Conectado a la partida de tu amigo · <b>${modeName(m.mode)}</b><br>Esperando a que pulse <b>EMPEZAR</b>…`); break;
-    case 'start': if (m.mode) MP.mode = m.mode; startGame(true); break;
+    case 'join': if (MP.role === 'host') netSend({ t: 'hello', mode: MP.mode, map: MAPID }); break;
+    case 'hello':
+      if (m.map && m.map !== MAPID) { mpStatus('Tu amigo juega en otro mapa. Cambiando de mapa…'); const code = MP.code; mpCleanup(); goToMap(m.map, '&join=' + code + '&auto=1'); break; }
+      MP.mode = m.mode; mpStatus(`Conectado a la partida de tu amigo · <b>${modeName(m.mode)}</b><br>Esperando a que pulse <b>EMPEZAR</b>…`); break;
+    case 'start': if (m.map && m.map !== MAPID) break; if (m.mode) MP.mode = m.mode; startGame(true); break;
     case 'st': if (MP.remote) MP.remote.setState(m); if (MP.role === 'host' && MP.mode === 'coop' && !m.a) checkCoopOver(); break;
     case 'fx': if (MP.remote) MP.remote.fire(m.w); break;
-    case 'hit': if (MP.active && MP.mode === 'pvp' && !G.dead) hurtPlayer(m.dmg, MP.remote ? MP.remote.pos.clone() : player.pos.clone()); break;
+    case 'hit': if (isVs() && !G.dead) hurtPlayer(m.dmg, MP.remote ? MP.remote.pos.clone() : player.pos.clone()); break;
     case 'died':
       if (MP.remote) MP.remote.setAlive(false);
-      if (MP.mode === 'pvp') { MP.myKills++; banner('¡BAJA!', `Tú ${MP.myKills} – ${MP.theirKills} Rival`, 1.6); showHit(true); if (MP.myKills >= MP_GOAL) { netSend({ t: 'lose', a: MP.myKills, b: MP.theirKills }); mpEnd(true); } }
+      if (MP.mode === 'tac') { showHit(true); if (MP.role === 'host') tacRoundEnd('h', 'eliminación'); }
+      else if (MP.mode === 'pvp') { MP.myKills++; banner('¡BAJA!', `Tú ${MP.myKills} – ${MP.theirKills} Rival`, 1.6); showHit(true); if (MP.myKills >= MP_GOAL) { netSend({ t: 'lose', a: MP.myKills, b: MP.theirKills }); mpEnd(true); } }
       else checkCoopOver();
       break;
     case 'lose': mpEnd(false); break;
+    case 'win': mpEnd(true); break;
+    case 'tr': tacBeginRound(m.n, !m.a); break;
+    case 'tl': if (TAC.on) { TAC.phase = 'live'; TAC.t = TAC.roundTime; banner('¡YA!', '', 0.9); } break;
+    case 'tz': TAC.zone = -m.z; TAC.t = m.tl; break;
+    case 'te': TAC.me = m.g; TAC.them = m.h; TAC.phase = 'end'; TAC.t = 4; tacShowEnd(m.w === 'g' ? 'win' : m.w === 'h' ? 'lose' : 'draw', m.why); break;
     case 'nade': throwGrenade(m.k, new V3(...m.p), null, false, new V3(...m.v), m.e); break;
     case 'en': applySnapshot(m); break;
     case 'efx': proxyShot(m); break;
@@ -2346,6 +2973,7 @@ function onNet(m) {
   }
 }
 function mpEnd(won) {
+  if (TAC.on) { TAC.phase = 'over'; gameOver(`Rondas: tú ${TAC.me} – ${TAC.them} rival`, won ? '¡HAS GANADO!' : 'HAS PERDIDO'); return; }
   gameOver(`Tú ${MP.myKills} – ${MP.theirKills} Rival`, won ? '¡HAS GANADO!' : 'HAS PERDIDO');
 }
 function localDied() {
@@ -2353,7 +2981,8 @@ function localDied() {
   G.dead = true; firing = false; ads = false; reloading = 0;
   for (const W of WEAPONS) W.g.visible = false;
   netSend({ t: 'died' });
-  if (MP.mode === 'pvp') { MP.theirKills++; MP.respawnT = 3; banner('HAS CAÍDO', `Tú ${MP.myKills} – ${MP.theirKills} Rival · reapareces en 3 s`, 2.6); }
+  if (MP.mode === 'tac') { banner('HAS CAÍDO', 'espera a la siguiente ronda', 2.5); if (MP.role === 'host') tacRoundEnd('g', 'eliminación'); }
+  else if (MP.mode === 'pvp') { MP.theirKills++; MP.respawnT = 3; banner('HAS CAÍDO', `Tú ${MP.myKills} – ${MP.theirKills} Rival · reapareces en 3 s`, 2.6); }
   else { banner('HAS CAÍDO', 'reaparecerás al empezar la siguiente oleada', 3); checkCoopOver(); }
 }
 function checkCoopOver() {
@@ -2367,9 +2996,9 @@ function respawnLocal() {
     const o = MP.remote ? MP.remote.pos : new V3();
     sp = PVP_SPAWNS.map(p => ({ p, d: Math.hypot(p[0] - o.x, p[1] - o.z) })).sort((a, b) => b.d - a.d)[(Math.random() * 2) | 0].p;
     for (const W of WEAPONS) { W.mag = W.magSize; W.reserve = W.reserve0; } NADES.frag = 2; NADES.flash = 2;
-  } else { const o = MP.remote && MP.remote.alive ? MP.remote.pos : new V3(16, 0, -12); sp = [o.x + 1.5, o.z + 1.5]; }
+  } else { const o = MP.remote && MP.remote.alive ? MP.remote.pos : new V3(MC.coop[0][0], 0, MC.coop[0][1]); sp = [o.x + 1.5, o.z + 1.5]; }
   player.pos.set(sp[0], groundAt(sp[0], sp[1], 0.3, 2) || 0.17, sp[1]);
-  const t = MP.remote ? MP.remote.pos : new V3(8, 0, 8); player.yaw = Math.atan2(-(t.x - sp[0]), -(t.z - sp[1])); player.pitch = 0;
+  const t = MP.remote ? MP.remote.pos : new V3(MC.coopLook[0], 0, MC.coopLook[1]); player.yaw = Math.atan2(-(t.x - sp[0]), -(t.z - sp[1])); player.pitch = 0;
   WEAPONS[cur].g.visible = true; switchT = 0.35;
 }
 // spectator camera while dead: behind your friend in co-op, at your body in 1v1
@@ -2384,6 +3013,7 @@ function worldTick(dt) {
   if (!MP.active || MP.role === 'host') for (let i = enemies.length - 1; i >= 0; i--) enemies[i]?.update(dt);
   if (!MP.active || (MP.role === 'host' && MP.mode === 'coop')) updateWaves(dt);
   if (MP.active && MP.role === 'guest') for (let i = proxies.length - 1; i >= 0; i--) proxies[i].update(dt);
+  if (TAC.on) tacTick(dt);
   updatePickups(dt); updateGrenades(dt);
   if (MP.active) netTick(dt);
 }
@@ -2449,6 +3079,11 @@ class RemotePlayer {
     else if (ud.glb) { const hs = Math.hypot(this.vel.x, this.vel.z); if (hs > 2.4) Enemy.prototype.setAnim.call(this, 'Run', hs / 3.4); else if (hs > 0.35) Enemy.prototype.setAnim.call(this, 'Walk', hs / 1.4); else Enemy.prototype.setAnim.call(this, 'Idle', 1); }
     if (ud.glb && (this.alive || this.deadT < 0.3)) ud.mixer.update(dt);
     if (ud.flash.visible) { ud.flashT -= dt; if (ud.flashT <= 0) ud.flash.visible = false; }
+    // the rival's footsteps: walking and running can be heard, crouching or aiming keeps you silent
+    if (this.foe && this.alive) {
+      const hs = Math.hypot(this.vel.x, this.vel.z);
+      if (hs > 3.0 && this.pos.y - groundAt(this.pos.x, this.pos.z, 0.25, this.pos.y) < 0.1) { this.stepAcc = (this.stepAcc || 0) + hs * dt; if (this.stepAcc > (hs > 5 ? 2.2 : 1.7)) { this.stepAcc = 0; const sp = spatial(this.pos); if (sp.d < 38) sfxStep(Math.min(1, (hs > 5 ? 0.9 : 0.55) * (1 - sp.d / 40)), sp.pan); } }
+    }
   }
   remove() { scene.remove(this.mesh); for (const o of this.parts) { const i = enemyParts.indexOf(o); if (i >= 0) enemyParts.splice(i, 1); } }
 }
